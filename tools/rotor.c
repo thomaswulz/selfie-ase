@@ -468,6 +468,8 @@ uint64_t* NID_SINGLE_WORD_8 = (uint64_t*) 0;
 uint64_t* NID_SINGLE_WORD_MINUS_1 = (uint64_t*) 0;
 uint64_t* NID_SINGLE_WORD_INT_MIN = (uint64_t*) 0;
 
+uint64_t* NID_NOP = (uint64_t*) 0;
+
 uint64_t DOUBLEWORDSIZE       = 8;
 uint64_t DOUBLEWORDSIZEINBITS = 64;
 
@@ -537,6 +539,8 @@ void init_interface_sorts() {
 
   NID_SINGLE_WORD_MINUS_1 = new_constant(OP_CONSTD, SID_SINGLE_WORD, -1, 0, "single-word -1");
   NID_SINGLE_WORD_INT_MIN = new_constant(OP_CONSTH, SID_SINGLE_WORD, two_to_the_power_of(SINGLEWORDSIZEINBITS - 1), 0, "single-word INT_MIN");
+
+  NID_NOP = new_constant(OP_CONSTH, SID_SINGLE_WORD, 19, 0, "single-word NOP");
 
   SID_DOUBLE_WORD = new_bitvec(DOUBLEWORDSIZEINBITS, "64-bit double word");
 
@@ -2854,6 +2858,8 @@ uint64_t* eval_compressed_instruction_control_flow_nid = (uint64_t*) 0;
 
 uint64_t* eval_core_0_control_flow_nid = (uint64_t*) 0;
 
+uint64_t* input_stutter = (uint64_t*) 0;
+
 // ------------------------- INITIALIZATION ------------------------
 
 void init_cores(uint64_t number_of_cores) {
@@ -4753,6 +4759,10 @@ void print_interface_sorts() {
   print_line(NID_SINGLE_WORD_8);
 
   print_line(NID_SINGLE_WORD_MINUS_1);
+
+  print_break();
+
+  print_line(NID_NOP);
 
   print_break();
 
@@ -9776,8 +9786,15 @@ void kernel_properties(uint64_t core, uint64_t* ir_nid, uint64_t* read_bytes_nid
 
 void rotor_combinational(uint64_t core, uint64_t* pc_nid, uint64_t* code_segment_nid, uint64_t* register_file_nid, uint64_t* memory_nid) {
   // fetch instruction
+  
+  input_stutter = new_input(OP_INPUT, SID_BOOLEAN, "stutter-bit", "whether to stutter on this cycle");
 
-  eval_ir_nid = fetch_instruction(pc_nid, code_segment_nid);
+  eval_ir_nid = new_ternary(OP_ITE, SID_SINGLE_WORD,
+    input_stutter,
+	  NID_NOP,
+    fetch_instruction(pc_nid, code_segment_nid),
+	"stutter or fetch"
+  );
 
   set_for(core, eval_ir_nids, eval_ir_nid);
 
@@ -9863,7 +9880,13 @@ void rotor_sequential(uint64_t core, uint64_t* pc_nid, uint64_t* register_file_n
         format_comment("new-core-%lu-pc-value", core),
         "asserting new pc value == new core-0 pc value");
   else
-    next_pc_nid = new_next(SID_MACHINE_WORD, pc_nid, control_flow_nid, "program counter");
+    next_pc_nid = new_next(SID_MACHINE_WORD, pc_nid,
+      new_ternary(OP_ITE, SID_MACHINE_WORD,
+      input_stutter,
+      pc_nid,
+      control_flow_nid,
+      "stutter or update pc"),
+    "program counter");
 
   set_for(core, next_pc_nids, next_pc_nid);
   set_for(core, sync_pc_nids, sync_pc_nid);
