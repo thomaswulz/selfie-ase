@@ -2854,6 +2854,8 @@ uint64_t* eval_compressed_instruction_control_flow_nid = (uint64_t*) 0;
 
 uint64_t* eval_core_0_control_flow_nid = (uint64_t*) 0;
 
+uint64_t* input_stutter = (uint64_t*) 0;
+
 // ------------------------- INITIALIZATION ------------------------
 
 void init_cores(uint64_t number_of_cores) {
@@ -3216,6 +3218,17 @@ uint64_t* new_init(uint64_t* sid, uint64_t* state_nid, uint64_t* value_nid, char
 
 uint64_t* new_next(uint64_t* sid, uint64_t* state_nid, uint64_t* value_nid, char* comment) {
   return new_binary(OP_NEXT, sid, state_nid, value_nid, comment);
+}
+
+uint64_t* new_next_stutter(uint64_t* sid, uint64_t* state_nid, uint64_t* value_nid, char* comment) {
+  return new_binary(OP_NEXT, sid, state_nid,
+    new_ternary(OP_ITE,
+      sid,
+      input_stutter,
+      state_nid,
+      value_nid,
+      "stutter or update"),
+    comment);
 }
 
 uint64_t* new_property(char* op, uint64_t* condition_nid, char* symbol, char* comment) {
@@ -9513,7 +9526,7 @@ void kernel_sequential(uint64_t core,
 
   if ((SHARED_MEMORY == 0) + (core == number_of_cores - 1))
     next_program_break_nid =
-      new_next(SID_VIRTUAL_ADDRESS,
+      new_next_stutter(SID_VIRTUAL_ADDRESS,
         program_break_nid,
         next_program_break_nid,
         "new program break");
@@ -9529,7 +9542,7 @@ void kernel_sequential(uint64_t core,
 
   if (core == number_of_cores - 1)
     next_file_descriptor_nid =
-      new_next(SID_MACHINE_WORD,
+      new_next_stutter(SID_MACHINE_WORD,
         file_descriptor_nid,
         next_file_descriptor_nid,
         "new file descriptor");
@@ -9537,7 +9550,7 @@ void kernel_sequential(uint64_t core,
   // update read kernel state
 
   set_for(core, next_readable_bytes_nids,
-    new_next(SID_MACHINE_WORD,
+    new_next_stutter(SID_MACHINE_WORD,
       readable_bytes_nid,
       new_ternary(OP_ITE, SID_MACHINE_WORD,
         still_reading_active_read_nid,
@@ -9549,7 +9562,7 @@ void kernel_sequential(uint64_t core,
       "readable bytes"));
 
   set_for(core, next_read_bytes_nids,
-    new_next(SID_MACHINE_WORD,
+    new_next_stutter(SID_MACHINE_WORD,
       read_bytes_nid,
       new_ternary(OP_ITE, SID_MACHINE_WORD,
         new_binary_boolean(OP_AND,
@@ -9777,6 +9790,8 @@ void kernel_properties(uint64_t core, uint64_t* ir_nid, uint64_t* read_bytes_nid
 void rotor_combinational(uint64_t core, uint64_t* pc_nid, uint64_t* code_segment_nid, uint64_t* register_file_nid, uint64_t* memory_nid) {
   // fetch instruction
 
+  input_stutter = new_input(OP_INPUT, SID_BOOLEAN, "stutter-bit", "whether to stutter on this cycle");
+
   eval_ir_nid = fetch_instruction(pc_nid, code_segment_nid);
 
   set_for(core, eval_ir_nids, eval_ir_nid);
@@ -9863,7 +9878,7 @@ void rotor_sequential(uint64_t core, uint64_t* pc_nid, uint64_t* register_file_n
         format_comment("new-core-%lu-pc-value", core),
         "asserting new pc value == new core-0 pc value");
   else
-    next_pc_nid = new_next(SID_MACHINE_WORD, pc_nid, control_flow_nid, "program counter");
+    next_pc_nid = new_next_stutter(SID_MACHINE_WORD, pc_nid, control_flow_nid, "program counter");
 
   set_for(core, next_pc_nids, next_pc_nid);
   set_for(core, sync_pc_nids, sync_pc_nid);
@@ -9894,7 +9909,7 @@ void rotor_sequential(uint64_t core, uint64_t* pc_nid, uint64_t* register_file_n
       next_register_file_nid = new_next(SID_REGISTER_STATE,
         get_for(0, state_register_file_nids), register_data_flow_nid, "register file");
   } else
-    next_register_file_nid = new_next(SID_REGISTER_STATE,
+    next_register_file_nid = new_next_stutter(SID_REGISTER_STATE,
       register_file_nid, register_data_flow_nid, "register file");
 
   set_for(core, next_register_file_nids, next_register_file_nid);
@@ -9926,7 +9941,7 @@ void rotor_sequential(uint64_t core, uint64_t* pc_nid, uint64_t* register_file_n
       next_main_memory_nid = new_next(SID_MEMORY_STATE,
         get_for(0, state_main_memory_nids), memory_data_flow_nid, "main memory");
   } else
-    next_main_memory_nid = new_next(SID_MEMORY_STATE,
+    next_main_memory_nid = new_next_stutter(SID_MEMORY_STATE,
       memory_nid, memory_data_flow_nid, "main memory");
 
   set_for(core, next_main_memory_nids, next_main_memory_nid);
