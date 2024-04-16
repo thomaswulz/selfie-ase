@@ -10602,7 +10602,7 @@ void rotor_sequential(uint64_t core, uint64_t* pc_nid, uint64_t* register_file_n
       next_data_segment_nid = new_next(SID_DATA_STATE,
         get_for(0, state_data_segment_nids), data_segment_data_flow_nid, "data segment");
   } else
-    next_data_segment_nid = new_next(SID_DATA_STATE,
+    next_data_segment_nid = new_next_stutter(SID_DATA_STATE,
       data_segment_nid, data_segment_data_flow_nid, "data segment");
 
   set_for(core, next_data_segment_nids, next_data_segment_nid);
@@ -10634,7 +10634,7 @@ void rotor_sequential(uint64_t core, uint64_t* pc_nid, uint64_t* register_file_n
       next_heap_segment_nid = new_next(SID_HEAP_STATE,
         get_for(0, state_heap_segment_nids), heap_segment_data_flow_nid, "heap segment");
   } else
-    next_heap_segment_nid = new_next(SID_HEAP_STATE,
+    next_heap_segment_nid = new_next_stutter(SID_HEAP_STATE,
       heap_segment_nid, heap_segment_data_flow_nid, "heap segment");
 
   set_for(core, next_heap_segment_nids, next_heap_segment_nid);
@@ -10663,7 +10663,7 @@ void rotor_sequential(uint64_t core, uint64_t* pc_nid, uint64_t* register_file_n
     if (core < number_of_cores - 1)
       state_stack_segment_nid = stack_segment_data_flow_nid;
     else
-      next_stack_segment_nid = new_next(SID_STACK_STATE,
+      next_stack_segment_nid = new_next_stutter(SID_STACK_STATE,
         get_for(0, state_stack_segment_nids), stack_segment_data_flow_nid, "stack segment");
   } else
     next_stack_segment_nid = new_next_stutter(SID_STACK_STATE,
