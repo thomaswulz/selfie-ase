@@ -10426,9 +10426,9 @@ void rotor_combinational(uint64_t core, uint64_t* pc_nid,
 
   eval_ir_nid = new_ternary(OP_ITE, SID_SINGLE_WORD,
     input_stutter,
-	  NID_NOP,
+    NID_NOP,
     fetch_instruction(pc_nid, code_segment_nid),
-	"stutter or fetch"
+    "stutter or fetch"
   );
 
   set_for(core, eval_ir_nids, eval_ir_nid);
