@@ -3005,6 +3005,7 @@ uint64_t* eval_stack_segment_data_flow_nid  = (uint64_t*) 0;
 uint64_t* eval_stack_segment_data_flow_nids = (uint64_t*) 0;
 
 uint64_t* input_stutter = (uint64_t*) 0;
+uint64_t* do_stutter = (uint64_t*) 0;
 
 // ------------------------- INITIALIZATION ------------------------
 
@@ -10249,6 +10250,28 @@ void kernel_properties(uint64_t core, uint64_t* ir_nid, uint64_t* read_bytes_nid
   }
 }
 
+uint64_t *is_critical_section(uint64_t core, uint64_t *pc_nid) {
+  uint64_t *base_pc_nid;
+  uint64_t *relative_pc_nid;
+  uint64_t low_pc;
+  uint64_t high_pc;
+  uint64_t *low_pc_nid;
+  uint64_t *high_pc_nid;
+
+  low_pc = INSTRUCTIONSIZE * 0;
+  high_pc = INSTRUCTIONSIZE * 1;
+
+  low_pc_nid = new_constant(OP_CONSTH, SID_MACHINE_WORD, low_pc, 0, "low stutter range pc");
+  high_pc_nid = new_constant(OP_CONSTH, SID_MACHINE_WORD, high_pc, 0, "high stutter range pc");
+
+  base_pc_nid = new_constant(OP_CONSTH, SID_MACHINE_WORD, code_start, 0, "start of code segment");
+  relative_pc_nid = new_binary(OP_SUB, SID_MACHINE_WORD, pc_nid, base_pc_nid, "pc relative to code start");
+  return new_binary_boolean(OP_AND,
+                            new_binary_boolean(OP_ULT, relative_pc_nid, high_pc_nid, "pc < high?"),
+                            new_binary_boolean(OP_UGTE, relative_pc_nid, low_pc_nid, "pc >= low?"),
+                            "pc in stutter range?");
+}
+
 void rotor_combinational(uint64_t core, uint64_t* pc_nid,
   uint64_t* code_segment_nid, uint64_t* register_file_nid,
   uint64_t* data_segment_nid, uint64_t* heap_segment_nid, uint64_t* stack_segment_nid) {
@@ -10258,12 +10281,18 @@ void rotor_combinational(uint64_t core, uint64_t* pc_nid,
   uint64_t* instruction_register_data_flow_nid;
   uint64_t* instruction_data_flow_nid;
 
+
+  if (core == 0) {
+    input_stutter = new_input(OP_INPUT, SID_BOOLEAN, "stutter-bit", "whether to stutter on this cycle");
+  }
+
+  // TODO: actual stutter condition depends on thread # and pc of both threads
+  do_stutter = new_binary_boolean(OP_AND, is_critical_section(core, pc_nid), input_stutter, "stutter bit valid?");
+
   // fetch instruction
 
-  input_stutter = new_input(OP_INPUT, SID_BOOLEAN, "stutter-bit", "whether to stutter on this cycle");
-
   eval_ir_nid = new_ternary(OP_ITE, SID_SINGLE_WORD,
-    input_stutter,
+    do_stutter,
     NID_NOP,
     fetch_instruction(pc_nid, code_segment_nid),
     "stutter or fetch"
@@ -10405,7 +10434,7 @@ void rotor_sequential(uint64_t core, uint64_t* pc_nid, uint64_t* register_file_n
   else
     next_nid = new_next(SID_MACHINE_WORD, pc_nid,
       new_ternary(OP_ITE, SID_MACHINE_WORD,
-      input_stutter,
+      do_stutter,
       pc_nid,
       control_flow_nid,
       "stutter or update pc"),
