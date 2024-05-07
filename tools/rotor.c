@@ -9907,21 +9907,18 @@ uint64_t* core_compressed_control_flow(uint64_t* pc_nid, uint64_t* c_ir_nid, uin
 // -----------------------------------------------------------------
 
 void new_core_state(uint64_t core) {
-  set_for(core, state_pc_nids, state_pc_nid);
-
-  if (SYNCHRONIZED_PC)
-    if (core > 0)
-      return;
-
-  if (core < number_of_binaries)
+  // this only considers the entry point of the first context, but both binaries should usually have the same
+  if (core == 0)
     initial_pc_nid = new_constant(OP_CONSTH, SID_MACHINE_WORD, get_pc(current_context), 8, "entry pc value");
-  else
-    initial_pc_nid = new_constant(OP_CONSTH, SID_MACHINE_WORD, code_start, 8, "initial pc value");
 
   state_pc_nid =
-    new_input(OP_STATE, SID_MACHINE_WORD, format_comment("core-%lu-pc", core), "program counter");
+          new_input(OP_STATE, SID_MACHINE_WORD, format_comment("core-%lu-pc", core), "program counter");
 
   set_for(core, state_pc_nids, state_pc_nid);
+}
+
+void core_state_assign(uint64_t core) {
+  state_pc_nid = get_for(core, state_pc_nids);
 
   init_pc_nid = new_init(SID_MACHINE_WORD, state_pc_nid, initial_pc_nid, "initial value of pc");
 
@@ -11056,13 +11053,21 @@ void model_rotor() {
 
   core = 0;
 
+  load_binary(core);
+  while (core < number_of_cores) {
+    new_core_state(core);
+    core = core + 1;
+  }
+
+  core = 0;
+
   while (core < number_of_cores) {
     load_binary(core);
 
     new_segmentation(core);
 
     new_kernel_state(core);
-    new_core_state(core);
+    core_state_assign(core);
     new_register_file_state(core);
 
     new_code_segment(core);
