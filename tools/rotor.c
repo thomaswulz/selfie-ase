@@ -98,10 +98,13 @@ void set_reuse(uint64_t* line, uint64_t reuse)         { *(line + 10) = reuse; }
 void set_pred(uint64_t* line, uint64_t* pred)          { *(line + 11) = (uint64_t) pred; }
 void set_succ(uint64_t* line, uint64_t* succ)          { *(line + 12) = (uint64_t) succ; }
 
+uint64_t* allocate_lines(uint64_t number_of_lines);
+
 uint64_t  are_lines_equal(uint64_t* left_line, uint64_t* right_line);
 uint64_t* find_equal_line(uint64_t* line);
 
 uint64_t* new_line(char* op, uint64_t* sid, uint64_t* arg1, uint64_t* arg2, uint64_t* arg3, char* comment);
+uint64_t* new_line_symbolic(char* op, uint64_t* sid, uint64_t* arg1, uint64_t* arg2, uint64_t* arg3, char* comment);
 
 uint64_t* new_bitvec(uint64_t size_in_bits, char* comment);
 uint64_t* new_array(uint64_t* size_sid, uint64_t* element_sid, char* comment);
@@ -115,6 +118,7 @@ uint64_t* new_slice(uint64_t* sid, uint64_t* value_nid, uint64_t u, uint64_t l, 
 uint64_t* new_unary(char* op, uint64_t* sid, uint64_t* value_nid, char* comment);
 uint64_t* new_unary_boolean(char* op, uint64_t* value_nid, char* comment);
 uint64_t* new_binary(char* op, uint64_t* sid, uint64_t* left_nid, uint64_t* right_nid, char* comment);
+uint64_t* new_binary_symbolic(char* op, uint64_t* sid, uint64_t* left_nid, uint64_t* right_nid, char* comment);
 uint64_t* new_binary_boolean(char* op, uint64_t* left_nid, uint64_t* right_nid, char* comment);
 uint64_t* new_ternary(char* op, uint64_t* sid, uint64_t* first_nid, uint64_t* second_nid, uint64_t* third_nid, char* comment);
 
@@ -276,6 +280,7 @@ void print_nid(uint64_t nid, uint64_t* line);
 
 uint64_t print_sort(uint64_t nid, uint64_t* line);
 uint64_t print_constant(uint64_t nid, uint64_t* line);
+uint64_t print_propagated_constant(uint64_t nid, uint64_t* line);
 uint64_t print_input(uint64_t nid, uint64_t* line);
 
 uint64_t print_ext(uint64_t nid, uint64_t* line);
@@ -288,6 +293,8 @@ uint64_t print_ternary_op(uint64_t nid, uint64_t* line);
 uint64_t print_constraint(uint64_t nid, uint64_t* line);
 
 void print_comment(uint64_t* line);
+
+uint64_t has_symbolic_state(uint64_t* line);
 
 uint64_t print_line_with_given_nid(uint64_t nid, uint64_t* line);
 uint64_t print_line_once(uint64_t nid, uint64_t* line);
@@ -322,6 +329,8 @@ char* format_comment_binary(char* comment, uint64_t value);
 uint64_t last_nid = 0; // last nid is 0
 
 uint64_t current_nid = 1; // first nid is 1
+
+uint64_t printing_propagated_constants = 0;
 
 // -----------------------------------------------------------------
 // -------------------------- SEMANTICS ----------------------------
@@ -368,6 +377,9 @@ uint64_t eval_slice_u(uint64_t* line);
 uint64_t eval_slice_l(uint64_t* line);
 
 uint64_t eval_input(uint64_t* line);
+
+void propagate_symbolic_state(uint64_t* line, uint64_t* arg1, uint64_t* arg2, uint64_t* arg3);
+
 uint64_t eval_ext(uint64_t* line);
 uint64_t eval_slice(uint64_t* line);
 uint64_t eval_concat(uint64_t* line);
@@ -383,7 +395,7 @@ uint64_t eval_line_for(uint64_t core, uint64_t* lines);
 uint64_t eval_property(uint64_t core, uint64_t* line);
 uint64_t eval_property_for(uint64_t core, uint64_t* lines);
 
-uint64_t eval_init(uint64_t* line);
+void eval_init(uint64_t* line);
 
 uint64_t eval_next(uint64_t* line);
 uint64_t eval_next_for(uint64_t core, uint64_t* lines);
@@ -417,7 +429,9 @@ uint64_t first_input = 0; // indicates if input has been consumed for the first 
 
 uint64_t any_input = 0; // indicates if any input has been consumed
 
-uint64_t printing_btor_model = 0; // indicates if BTOR model is printed during evaluation
+uint64_t propagating_symbolic_state = 0;
+
+uint64_t printing_unrolled_model = 0; // indicates if model is printed during evaluation
 
 // *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~
 // -----------------------------------------------------------------
@@ -628,6 +642,8 @@ uint64_t* state_program_break_nid  = (uint64_t*) 0;
 uint64_t* init_program_break_nid   = (uint64_t*) 0;
 uint64_t* eval_program_break_nid   = (uint64_t*) 0;
 uint64_t* next_program_break_nid   = (uint64_t*) 0;
+
+uint64_t* init_program_break_nids  = (uint64_t*) 0;
 uint64_t* next_program_break_nids  = (uint64_t*) 0;
 
 uint64_t* state_file_descriptor_nid = (uint64_t*) 0;
@@ -640,12 +656,16 @@ uint64_t* next_input_buffer_nid  = (uint64_t*) 0;
 
 uint64_t* state_readable_bytes_nid = (uint64_t*) 0;
 uint64_t* init_readable_bytes_nid  = (uint64_t*) 0;
+
+uint64_t* init_readable_bytes_nids = (uint64_t*) 0;
 uint64_t* next_readable_bytes_nids = (uint64_t*) 0;
 
 uint64_t* eval_still_reading_active_read_nid = (uint64_t*) 0;
 
 uint64_t* state_read_bytes_nid = (uint64_t*) 0;
 uint64_t* init_read_bytes_nid  = (uint64_t*) 0;
+
+uint64_t* init_read_bytes_nids = (uint64_t*) 0;
 uint64_t* next_read_bytes_nids = (uint64_t*) 0;
 
 uint64_t* eval_more_than_one_readable_byte_to_read_nid = (uint64_t*) 0;
@@ -684,9 +704,14 @@ void init_interface_kernel() {
 }
 
 void init_kernels(uint64_t number_of_cores) {
-  next_program_break_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
-  next_readable_bytes_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  next_read_bytes_nids     = zmalloc(number_of_cores * sizeof(uint64_t*));
+  init_program_break_nids = allocate_lines(number_of_cores);
+  next_program_break_nids = allocate_lines(number_of_cores);
+
+  init_readable_bytes_nids = allocate_lines(number_of_cores);
+  next_readable_bytes_nids = allocate_lines(number_of_cores);
+
+  init_read_bytes_nids = allocate_lines(number_of_cores);
+  next_read_bytes_nids = allocate_lines(number_of_cores);
 }
 
 // *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~
@@ -754,15 +779,13 @@ uint64_t SHARED_REGISTERS       = 0; // flag for shared registers across cores
 
 // ------------------------ GLOBAL VARIABLES -----------------------
 
-uint64_t* init_zeroed_register_file_nid = (uint64_t*) 0;
-uint64_t* next_zeroed_register_file_nid = (uint64_t*) 0;
-
-uint64_t* initial_register_file_nid = (uint64_t*) 0;
+uint64_t* init_zeroed_register_file_nids = (uint64_t*) 0;
+uint64_t* next_zeroed_register_file_nids = (uint64_t*) 0;
 
 uint64_t* state_register_file_nid = (uint64_t*) 0;
-uint64_t* init_register_file_nid  = (uint64_t*) 0;
 
 uint64_t* state_register_file_nids = (uint64_t*) 0;
+uint64_t* init_register_file_nids  = (uint64_t*) 0;
 uint64_t* next_register_file_nids  = (uint64_t*) 0;
 uint64_t* sync_register_file_nids  = (uint64_t*) 0;
 
@@ -810,9 +833,13 @@ void init_register_file_sorts() {
 }
 
 void init_register_files(uint64_t number_of_cores) {
-  state_register_file_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  next_register_file_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
-  sync_register_file_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
+  init_zeroed_register_file_nids = allocate_lines(number_of_cores);
+  next_zeroed_register_file_nids = allocate_lines(number_of_cores);
+
+  state_register_file_nids = allocate_lines(number_of_cores);
+  init_register_file_nids  = allocate_lines(number_of_cores);
+  next_register_file_nids  = allocate_lines(number_of_cores);
+  sync_register_file_nids  = allocate_lines(number_of_cores);
 }
 
 // -----------------------------------------------------------------
@@ -821,7 +848,7 @@ void init_register_files(uint64_t number_of_cores) {
 
 void print_memory_sorts();
 
-void new_segmentation();
+void new_segmentation(uint64_t core);
 void print_segmentation(uint64_t core);
 
 uint64_t* select_segment_feature(uint64_t* segment_nid,
@@ -1030,6 +1057,9 @@ uint64_t* SID_CODE_STATE   = (uint64_t*) 0;
 uint64_t* NID_CODE_START = (uint64_t*) 0;
 uint64_t* NID_CODE_END   = (uint64_t*) 0;
 
+uint64_t* NID_CODE_STARTS = (uint64_t*) 0;
+uint64_t* NID_CODE_ENDS   = (uint64_t*) 0;
+
 // main memory
 
 uint64_t MEMORYWORDSIZEINBITS = 64;
@@ -1048,6 +1078,9 @@ uint64_t* SID_DATA_STATE   = (uint64_t*) 0;
 uint64_t* NID_DATA_START = (uint64_t*) 0;
 uint64_t* NID_DATA_END   = (uint64_t*) 0;
 
+uint64_t* NID_DATA_STARTS = (uint64_t*) 0;
+uint64_t* NID_DATA_ENDS   = (uint64_t*) 0;
+
 // heap segment
 
 uint64_t HEAP_ADDRESS_SPACE = 1; // number of bits in heap segment addresses
@@ -1058,6 +1091,9 @@ uint64_t* SID_HEAP_STATE   = (uint64_t*) 0;
 uint64_t* NID_HEAP_START = (uint64_t*) 0;
 uint64_t* NID_HEAP_END   = (uint64_t*) 0;
 
+uint64_t* NID_HEAP_STARTS = (uint64_t*) 0;
+uint64_t* NID_HEAP_ENDS   = (uint64_t*) 0;
+
 // stack segment
 
 uint64_t STACK_ADDRESS_SPACE = 1; // number of bits in stack segment addresses
@@ -1067,6 +1103,9 @@ uint64_t* SID_STACK_STATE   = (uint64_t*) 0;
 
 uint64_t* NID_STACK_START = (uint64_t*) 0;
 uint64_t* NID_STACK_END   = (uint64_t*) 0;
+
+uint64_t* NID_STACK_STARTS = (uint64_t*) 0;
+uint64_t* NID_STACK_ENDS   = (uint64_t*) 0;
 
 // bit masks and factors
 
@@ -1088,34 +1127,28 @@ uint64_t* NID_BYTE_SIZE_IN_BASE_BITS = (uint64_t*) 0;
 
 // code segment
 
-uint64_t* state_zeroed_code_segment_nid = (uint64_t*) 0;
-uint64_t* init_zeroed_code_segment_nid  = (uint64_t*) 0;
-uint64_t* next_zeroed_code_segment_nid  = (uint64_t*) 0;
-
-uint64_t* initial_code_nid = (uint64_t*) 0;
-
-uint64_t* initial_code_segment_nid = (uint64_t*) 0;
+uint64_t* init_zeroed_code_segment_nids = (uint64_t*) 0;
+uint64_t* next_zeroed_code_segment_nids = (uint64_t*) 0;
 
 uint64_t* state_code_segment_nid = (uint64_t*) 0;
-uint64_t* init_code_segment_nid  = (uint64_t*) 0;
-uint64_t* next_code_segment_nid  = (uint64_t*) 0;
+
+uint64_t* initial_code_nids = (uint64_t*) 0;
 
 uint64_t* state_code_segment_nids = (uint64_t*) 0;
+uint64_t* init_code_segment_nids  = (uint64_t*) 0;
 uint64_t* next_code_segment_nids  = (uint64_t*) 0;
 
 // data segment
 
-uint64_t* init_zeroed_data_segment_nid = (uint64_t*) 0;
-uint64_t* next_zeroed_data_segment_nid = (uint64_t*) 0;
-
-uint64_t* initial_data_nid = (uint64_t*) 0;
-
-uint64_t* initial_data_segment_nid = (uint64_t*) 0;
+uint64_t* init_zeroed_data_segment_nids = (uint64_t*) 0;
+uint64_t* next_zeroed_data_segment_nids = (uint64_t*) 0;
 
 uint64_t* state_data_segment_nid = (uint64_t*) 0;
-uint64_t* init_data_segment_nid  = (uint64_t*) 0;
+
+uint64_t* initial_data_nids = (uint64_t*) 0;
 
 uint64_t* state_data_segment_nids = (uint64_t*) 0;
+uint64_t* init_data_segment_nids  = (uint64_t*) 0;
 uint64_t* next_data_segment_nids  = (uint64_t*) 0;
 uint64_t* sync_data_segment_nids  = (uint64_t*) 0;
 
@@ -1129,17 +1162,15 @@ uint64_t heap_allowance    = 4096; // must be multiple of WORDSIZE
 uint64_t heap_start = 0;
 uint64_t heap_size  = 0;
 
-uint64_t* init_zeroed_heap_segment_nid = (uint64_t*) 0;
-uint64_t* next_zeroed_heap_segment_nid = (uint64_t*) 0;
-
-uint64_t* initial_heap_nid = (uint64_t*) 0;
-
-uint64_t* initial_heap_segment_nid = (uint64_t*) 0;
+uint64_t* init_zeroed_heap_segment_nids = (uint64_t*) 0;
+uint64_t* next_zeroed_heap_segment_nids = (uint64_t*) 0;
 
 uint64_t* state_heap_segment_nid = (uint64_t*) 0;
-uint64_t* init_heap_segment_nid  = (uint64_t*) 0;
+
+uint64_t* initial_heap_nids = (uint64_t*) 0;
 
 uint64_t* state_heap_segment_nids = (uint64_t*) 0;
+uint64_t* init_heap_segment_nids  = (uint64_t*) 0;
 uint64_t* next_heap_segment_nids  = (uint64_t*) 0;
 uint64_t* sync_heap_segment_nids  = (uint64_t*) 0;
 
@@ -1153,17 +1184,15 @@ uint64_t stack_allowance    = 4096; // must be multiple of WORDSIZE > 0
 uint64_t stack_start = 0;
 uint64_t stack_size  = 0;
 
-uint64_t* init_zeroed_stack_segment_nid = (uint64_t*) 0;
-uint64_t* next_zeroed_stack_segment_nid = (uint64_t*) 0;
-
-uint64_t* initial_stack_nid = (uint64_t*) 0;
-
-uint64_t* initial_stack_segment_nid = (uint64_t*) 0;
+uint64_t* init_zeroed_stack_segment_nids = (uint64_t*) 0;
+uint64_t* next_zeroed_stack_segment_nids = (uint64_t*) 0;
 
 uint64_t* state_stack_segment_nid = (uint64_t*) 0;
-uint64_t* init_stack_segment_nid  = (uint64_t*) 0;
+
+uint64_t* initial_stack_nids = (uint64_t*) 0;
 
 uint64_t* state_stack_segment_nids = (uint64_t*) 0;
+uint64_t* init_stack_segment_nids  = (uint64_t*) 0;
 uint64_t* next_stack_segment_nids  = (uint64_t*) 0;
 uint64_t* sync_stack_segment_nids  = (uint64_t*) 0;
 
@@ -1278,21 +1307,59 @@ void init_memory_sorts(uint64_t max_code_size, uint64_t max_data_size) {
   NID_BYTE_SIZE_IN_BASE_BITS = NID_BYTE_3;
 }
 
+void init_segmentation(uint64_t number_of_cores) {
+  NID_CODE_STARTS = allocate_lines(number_of_cores);
+  NID_CODE_ENDS   = allocate_lines(number_of_cores);
+
+  NID_DATA_STARTS = allocate_lines(number_of_cores);
+  NID_DATA_ENDS   = allocate_lines(number_of_cores);
+
+  NID_HEAP_STARTS = allocate_lines(number_of_cores);
+  NID_HEAP_ENDS   = allocate_lines(number_of_cores);
+
+  NID_STACK_STARTS = allocate_lines(number_of_cores);
+  NID_STACK_ENDS   = allocate_lines(number_of_cores);
+}
+
 void init_memories(uint64_t number_of_cores) {
-  state_code_segment_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  next_code_segment_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
+  init_zeroed_code_segment_nids = allocate_lines(number_of_cores);
+  next_zeroed_code_segment_nids = allocate_lines(number_of_cores);
 
-  state_data_segment_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  next_data_segment_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
-  sync_data_segment_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
+  initial_code_nids = allocate_lines(number_of_cores);
 
-  state_heap_segment_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  next_heap_segment_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
-  sync_heap_segment_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
+  state_code_segment_nids = allocate_lines(number_of_cores);
+  init_code_segment_nids  = allocate_lines(number_of_cores);
+  next_code_segment_nids  = allocate_lines(number_of_cores);
 
-  state_stack_segment_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  next_stack_segment_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
-  sync_stack_segment_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
+  init_zeroed_data_segment_nids = allocate_lines(number_of_cores);
+  next_zeroed_data_segment_nids = allocate_lines(number_of_cores);
+
+  initial_data_nids = allocate_lines(number_of_cores);
+
+  state_data_segment_nids = allocate_lines(number_of_cores);
+  init_data_segment_nids  = allocate_lines(number_of_cores);
+  next_data_segment_nids  = allocate_lines(number_of_cores);
+  sync_data_segment_nids  = allocate_lines(number_of_cores);
+
+  init_zeroed_heap_segment_nids = allocate_lines(number_of_cores);
+  next_zeroed_heap_segment_nids = allocate_lines(number_of_cores);
+
+  initial_heap_nids = allocate_lines(number_of_cores);
+
+  state_heap_segment_nids = allocate_lines(number_of_cores);
+  init_heap_segment_nids  = allocate_lines(number_of_cores);
+  next_heap_segment_nids  = allocate_lines(number_of_cores);
+  sync_heap_segment_nids  = allocate_lines(number_of_cores);
+
+  init_zeroed_stack_segment_nids = allocate_lines(number_of_cores);
+  next_zeroed_stack_segment_nids = allocate_lines(number_of_cores);
+
+  initial_stack_nids = allocate_lines(number_of_cores);
+
+  state_stack_segment_nids = allocate_lines(number_of_cores);
+  init_stack_segment_nids  = allocate_lines(number_of_cores);
+  next_stack_segment_nids  = allocate_lines(number_of_cores);
+  sync_stack_segment_nids  = allocate_lines(number_of_cores);
 }
 
 // -----------------------------------------------------------------
@@ -2930,9 +2997,9 @@ void init_compressed_instruction_sorts() {
 }
 
 void init_decoders(uint64_t number_of_cores) {
-  eval_instruction_ID_nids            = zmalloc(number_of_cores * sizeof(uint64_t*));
-  eval_compressed_instruction_ID_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  eval_ID_nids                        = zmalloc(number_of_cores * sizeof(uint64_t*));
+  eval_instruction_ID_nids            = allocate_lines(number_of_cores);
+  eval_compressed_instruction_ID_nids = allocate_lines(number_of_cores);
+  eval_ID_nids                        = allocate_lines(number_of_cores);
 }
 
 // -----------------------------------------------------------------
@@ -2965,6 +3032,7 @@ uint64_t* state_pc_nid = (uint64_t*) 0;
 uint64_t* init_pc_nid  = (uint64_t*) 0;
 
 uint64_t* state_pc_nids = (uint64_t*) 0;
+uint64_t* init_pc_nids  = (uint64_t*) 0;
 uint64_t* next_pc_nids  = (uint64_t*) 0;
 uint64_t* sync_pc_nids  = (uint64_t*) 0;
 
@@ -3010,30 +3078,31 @@ uint64_t* do_stutter = (uint64_t*) 0;
 // ------------------------- INITIALIZATION ------------------------
 
 void init_cores(uint64_t number_of_cores) {
-  eval_ir_nids   = zmalloc(number_of_cores * sizeof(uint64_t*));
-  eval_c_ir_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
+  eval_ir_nids   = allocate_lines(number_of_cores);
+  eval_c_ir_nids = allocate_lines(number_of_cores);
 
-  state_pc_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  next_pc_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
-  sync_pc_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
+  state_pc_nids = allocate_lines(number_of_cores);
+  init_pc_nids  = allocate_lines(number_of_cores);
+  next_pc_nids  = allocate_lines(number_of_cores);
+  sync_pc_nids  = allocate_lines(number_of_cores);
 
-  eval_instruction_control_flow_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  eval_non_kernel_control_flow_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
-  eval_control_flow_nids             = zmalloc(number_of_cores * sizeof(uint64_t*));
+  eval_instruction_control_flow_nids = allocate_lines(number_of_cores);
+  eval_non_kernel_control_flow_nids  = allocate_lines(number_of_cores);
+  eval_control_flow_nids             = allocate_lines(number_of_cores);
 
-  eval_instruction_register_data_flow_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  eval_non_kernel_register_data_flow_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
-  eval_register_data_flow_nids             = zmalloc(number_of_cores * sizeof(uint64_t*));
+  eval_instruction_register_data_flow_nids = allocate_lines(number_of_cores);
+  eval_non_kernel_register_data_flow_nids  = allocate_lines(number_of_cores);
+  eval_register_data_flow_nids             = allocate_lines(number_of_cores);
 
-  eval_instruction_data_segment_data_flow_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  eval_data_segment_data_flow_nids             = zmalloc(number_of_cores * sizeof(uint64_t*));
+  eval_instruction_data_segment_data_flow_nids = allocate_lines(number_of_cores);
+  eval_data_segment_data_flow_nids             = allocate_lines(number_of_cores);
 
-  eval_instruction_heap_segment_data_flow_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  eval_non_kernel_heap_segment_data_flow_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
-  eval_heap_segment_data_flow_nids             = zmalloc(number_of_cores * sizeof(uint64_t*));
+  eval_instruction_heap_segment_data_flow_nids = allocate_lines(number_of_cores);
+  eval_non_kernel_heap_segment_data_flow_nids  = allocate_lines(number_of_cores);
+  eval_heap_segment_data_flow_nids             = allocate_lines(number_of_cores);
 
-  eval_instruction_stack_segment_data_flow_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  eval_stack_segment_data_flow_nids             = zmalloc(number_of_cores * sizeof(uint64_t*));
+  eval_instruction_stack_segment_data_flow_nids = allocate_lines(number_of_cores);
+  eval_stack_segment_data_flow_nids             = allocate_lines(number_of_cores);
 }
 
 // *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~
@@ -3082,8 +3151,8 @@ void model_rotor();
 void open_model_file();
 void close_model_file();
 
-void print_btor2_model_for(uint64_t core);
-void print_btor2_model();
+void print_model_for(uint64_t core);
+void print_model();
 
 // ------------------------ GLOBAL CONSTANTS -----------------------
 
@@ -3106,7 +3175,7 @@ char* memory_word_size_option      = (char*) 0;
 char* heap_allowance_option        = (char*) 0;
 char* stack_allowance_option       = (char*) 0;
 
-uint64_t generate_btor_model = 0;
+uint64_t generate_unrolled_model = 0;
 
 uint64_t evaluate_model    = 0;
 uint64_t output_assembly   = 0;
@@ -3138,9 +3207,10 @@ uint64_t* prop_next_fetch_seg_faulting_nids        = (uint64_t*) 0;
 
 uint64_t* prop_is_syscall_id_known_nids = (uint64_t*) 0;
 
-uint64_t* prop_bad_exit_code_nid   = (uint64_t*) 0;
+uint64_t* prop_bad_exit_code_nid  = (uint64_t*) 0;
+uint64_t* prop_good_exit_code_nid = (uint64_t*) 0;
+
 uint64_t* prop_bad_exit_code_nids  = (uint64_t*) 0;
-uint64_t* prop_good_exit_code_nid  = (uint64_t*) 0;
 uint64_t* prop_good_exit_code_nids = (uint64_t*) 0;
 
 uint64_t* prop_active_exits_nid           = (uint64_t*) 0;
@@ -3168,30 +3238,30 @@ uint64_t* prop_write_seg_faulting_nids  = (uint64_t*) 0;
 // ------------------------- INITIALIZATION ------------------------
 
 void init_properties(uint64_t number_of_cores) {
-  prop_is_instruction_known_nids           = zmalloc(number_of_cores * sizeof(uint64_t*));
-  prop_illegal_instruction_nids            = zmalloc(number_of_cores * sizeof(uint64_t*));
-  prop_illegal_compressed_instruction_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  prop_next_fetch_unaligned_nids           = zmalloc(number_of_cores * sizeof(uint64_t*));
-  prop_next_fetch_seg_faulting_nids        = zmalloc(number_of_cores * sizeof(uint64_t*));
+  prop_is_instruction_known_nids           = allocate_lines(number_of_cores);
+  prop_illegal_instruction_nids            = allocate_lines(number_of_cores);
+  prop_illegal_compressed_instruction_nids = allocate_lines(number_of_cores);
+  prop_next_fetch_unaligned_nids           = allocate_lines(number_of_cores);
+  prop_next_fetch_seg_faulting_nids        = allocate_lines(number_of_cores);
 
-  prop_is_syscall_id_known_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
+  prop_is_syscall_id_known_nids = allocate_lines(number_of_cores);
 
-  prop_bad_exit_code_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
-  prop_good_exit_code_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
+  prop_bad_exit_code_nids  = allocate_lines(number_of_cores);
+  prop_good_exit_code_nids = allocate_lines(number_of_cores);
 
-  prop_division_by_zero_nids         = zmalloc(number_of_cores * sizeof(uint64_t*));
-  prop_signed_division_overflow_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
+  prop_division_by_zero_nids         = allocate_lines(number_of_cores);
+  prop_signed_division_overflow_nids = allocate_lines(number_of_cores);
 
-  prop_load_seg_faulting_nids             = zmalloc(number_of_cores * sizeof(uint64_t*));
-  prop_store_seg_faulting_nids            = zmalloc(number_of_cores * sizeof(uint64_t*));
-  prop_compressed_load_seg_faulting_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
-  prop_compressed_store_seg_faulting_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  prop_stack_seg_faulting_nids            = zmalloc(number_of_cores * sizeof(uint64_t*));
+  prop_load_seg_faulting_nids             = allocate_lines(number_of_cores);
+  prop_store_seg_faulting_nids            = allocate_lines(number_of_cores);
+  prop_compressed_load_seg_faulting_nids  = allocate_lines(number_of_cores);
+  prop_compressed_store_seg_faulting_nids = allocate_lines(number_of_cores);
+  prop_stack_seg_faulting_nids            = allocate_lines(number_of_cores);
 
-  prop_brk_seg_faulting_nids    = zmalloc(number_of_cores * sizeof(uint64_t*));
-  prop_openat_seg_faulting_nids = zmalloc(number_of_cores * sizeof(uint64_t*));
-  prop_read_seg_faulting_nids   = zmalloc(number_of_cores * sizeof(uint64_t*));
-  prop_write_seg_faulting_nids  = zmalloc(number_of_cores * sizeof(uint64_t*));
+  prop_brk_seg_faulting_nids    = allocate_lines(number_of_cores);
+  prop_openat_seg_faulting_nids = allocate_lines(number_of_cores);
+  prop_read_seg_faulting_nids   = allocate_lines(number_of_cores);
+  prop_write_seg_faulting_nids  = allocate_lines(number_of_cores);
 }
 
 // -----------------------------------------------------------------
@@ -3225,7 +3295,7 @@ void eval_rotor();
 
 void disassemble_rotor(uint64_t core);
 
-void print_btor_model();
+void print_unrolled_model();
 
 uint64_t rotor_arguments();
 
@@ -3280,6 +3350,10 @@ void init_binaries() {
 // -----------------------------------------------------------------
 // *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~
 
+uint64_t* allocate_lines(uint64_t number_of_lines) {
+  return zmalloc(number_of_lines * sizeof(uint64_t*));
+}
+
 uint64_t are_lines_equal(uint64_t* left_line, uint64_t* right_line) {
   // assert: pointer equivalence iff structural equivalence
 
@@ -3326,6 +3400,7 @@ uint64_t* new_line(char* op, uint64_t* sid, uint64_t* arg1, uint64_t* arg2, uint
   set_arg2(new_line, arg2);
   set_arg3(new_line, arg3);
   set_comment(new_line, comment);
+  set_symbolic_state(new_line, UNUSED);
   set_state(new_line, 0);
   set_step(new_line, UNINITIALIZED);
   set_reuse(new_line, 0);
@@ -3360,6 +3435,13 @@ uint64_t* new_line(char* op, uint64_t* sid, uint64_t* arg1, uint64_t* arg2, uint
   }
 }
 
+uint64_t* new_line_symbolic(char* op, uint64_t* sid, uint64_t* arg1, uint64_t* arg2, uint64_t* arg3, char* comment) {
+  uint64_t* line;
+  line = new_line(op, sid, arg1, arg2, arg3, comment);
+  set_symbolic_state(line, line);
+  return line;
+}
+
 uint64_t* new_bitvec(uint64_t size_in_bits, char* comment) {
   return new_line(OP_SORT, UNUSED, (uint64_t*) BITVEC, (uint64_t*) size_in_bits, UNUSED, comment);
 }
@@ -3373,7 +3455,7 @@ uint64_t* new_constant(char* op, uint64_t* sid, uint64_t constant, uint64_t digi
 }
 
 uint64_t* new_input(char* op, uint64_t* sid, char* symbol, char* comment) {
-  return new_line(op, sid, (uint64_t*) symbol, UNUSED, UNUSED, comment);
+  return new_line_symbolic(op, sid, (uint64_t*) symbol, UNUSED, UNUSED, comment);
 }
 
 uint64_t* new_ext(char* op, uint64_t* sid, uint64_t* value_nid, uint64_t w, char* comment) {
@@ -3396,6 +3478,10 @@ uint64_t* new_binary(char* op, uint64_t* sid, uint64_t* left_nid, uint64_t* righ
   return new_line(op, sid, left_nid, right_nid, UNUSED, comment);
 }
 
+uint64_t* new_binary_symbolic(char* op, uint64_t* sid, uint64_t* left_nid, uint64_t* right_nid, char* comment) {
+  return new_line_symbolic(op, sid, left_nid, right_nid, UNUSED, comment);
+}
+
 uint64_t* new_binary_boolean(char* op, uint64_t* left_nid, uint64_t* right_nid, char* comment) {
   return new_binary(op, SID_BOOLEAN, left_nid, right_nid, comment);
 }
@@ -3405,11 +3491,11 @@ uint64_t* new_ternary(char* op, uint64_t* sid, uint64_t* first_nid, uint64_t* se
 }
 
 uint64_t* new_init(uint64_t* sid, uint64_t* state_nid, uint64_t* value_nid, char* comment) {
-  return new_binary(OP_INIT, sid, state_nid, value_nid, comment);
+  return new_binary_symbolic(OP_INIT, sid, state_nid, value_nid, comment);
 }
 
 uint64_t* new_next(uint64_t* sid, uint64_t* state_nid, uint64_t* value_nid, char* comment) {
-  return new_binary(OP_NEXT, sid, state_nid, value_nid, comment);
+  return new_binary_symbolic(OP_NEXT, sid, state_nid, value_nid, comment);
 }
 
 uint64_t* new_property(char* op, uint64_t* condition_nid, char* symbol, char* comment) {
@@ -3503,17 +3589,45 @@ uint64_t print_constant(uint64_t nid, uint64_t* line) {
   return nid;
 }
 
+uint64_t print_propagated_constant(uint64_t nid, uint64_t* line) {
+  if (is_constant_op(get_op(line))) return print_constant(nid, line);
+  nid = print_line_once(nid, get_sid(line));
+  print_nid(nid, line);
+  w = w + dprintf(output_fd, " %s %lu %lu ; propagated state\n", OP_CONSTD, get_nid(get_sid(line)), get_state(line));
+  return nid;
+}
+
 uint64_t print_input(uint64_t nid, uint64_t* line) {
-  if (printing_btor_model) {
-    if (get_op(line) == OP_STATE) {
-      nid = print_line_once(nid, get_symbolic_state(line));
-      set_nid(line, get_nid(get_symbolic_state(line)));
+  char* op;
+  nid = print_line_once(nid, get_sid(line));
+  op = get_op(line);
+  if (printing_unrolled_model) {
+    if (op == OP_STATE) {
+      if (get_symbolic_state(line) == line)
+        // state is uninitialized
+        op = OP_INPUT;
+      else if (is_bitvector(get_sid(line))) {
+        if (get_op(get_symbolic_state(line)) == OP_INIT)
+          nid = print_line_once(nid, get_arg2(get_symbolic_state(line)));
+        set_nid(line, get_nid(get_arg2(get_symbolic_state(line))));
+        return nid;
+      } else {
+        // assert: array
+        if (is_bitvector(get_sid(get_arg2(get_symbolic_state(line)))))
+          // assert: get_op(get_symbolic_state(line)) == OP_INIT
+          // TODO: handle zeroed arrays
+          op = OP_INPUT;
+        else {
+          if (get_op(get_symbolic_state(line)) == OP_INIT)
+            nid = print_line_once(nid, get_arg2(get_symbolic_state(line)));
+          set_nid(line, get_nid(get_arg2(get_symbolic_state(line))));
+          return nid;
+        }
+      }
     }
-  } else {
-    nid = print_line_once(nid, get_sid(line));
-    print_nid(nid, line);
-    w = w + dprintf(output_fd, " %s %lu %s", get_op(line), get_nid(get_sid(line)), (char*) get_arg1(line));
   }
+  print_nid(nid, line);
+  w = w + dprintf(output_fd, " %s %lu %s", op, get_nid(get_sid(line)), (char*) get_arg1(line));
   return nid;
 }
 
@@ -3568,11 +3682,17 @@ uint64_t print_ternary_op(uint64_t nid, uint64_t* line) {
 uint64_t print_constraint(uint64_t nid, uint64_t* line) {
   nid = print_line_once(nid, get_arg1(line));
   print_nid(nid, line);
-  if (printing_btor_model)
-    // TODO: possibly negate constraint
-    w = w + dprintf(output_fd, " root %lu %lu", get_nid(get_sid(get_arg1(line))), get_nid(get_arg1(line)));
-  else
-    w = w + dprintf(output_fd, " %s %lu %s", get_op(line), get_nid(get_arg1(line)), (char*) get_arg2(line));
+  if (printing_unrolled_model)
+    if (get_op(line) == OP_BAD) {
+      //w = w + dprintf(output_fd, "%lu %s %lu %lu\n", nid, OP_NOT, get_nid(get_sid(get_arg1(line))), get_nid(get_arg1(line)));
+      //print_nid(nid + 1, line);
+      //w = w + dprintf(output_fd, " %s %lu %s", OP_CONSTRAINT, nid, (char*) get_arg2(line));
+      //return nid + 1;
+      w = w + dprintf(output_fd, " %s %lu %s", OP_CONSTRAINT, get_nid(get_arg1(line)), (char*) get_arg2(line));
+      return nid;
+    }
+  //print_nid(nid, line);
+  w = w + dprintf(output_fd, " %s %lu %s", get_op(line), get_nid(get_arg1(line)), (char*) get_arg2(line));
   return nid;
 }
 
@@ -3587,6 +3707,13 @@ void print_comment(uint64_t* line) {
   w = w + dprintf(output_fd, "\n");
 }
 
+uint64_t has_symbolic_state(uint64_t* line) {
+  if (line == UNUSED)
+    return 0;
+  else
+    return get_symbolic_state(line) != UNUSED;
+}
+
 uint64_t print_line_with_given_nid(uint64_t nid, uint64_t* line) {
   char* op;
 
@@ -3598,24 +3725,34 @@ uint64_t print_line_with_given_nid(uint64_t nid, uint64_t* line) {
     nid = print_constant(nid, line);
   else if (is_input_op(op))
     nid = print_input(nid, line);
-  else if (op == OP_SEXT)
-    nid = print_ext(nid, line);
-  else if (op == OP_UEXT)
-    nid = print_ext(nid, line);
-  else if (op == OP_SLICE)
-    nid = print_slice(nid, line);
-  else if (is_unary_op(op))
-    nid = print_unary_op(nid, line);
-  else if (op == OP_ITE)
-    nid = print_ternary_op(nid, line);
-  else if (op == OP_WRITE)
-    nid = print_ternary_op(nid, line);
-  else if (op == OP_BAD)
-    nid = print_constraint(nid, line);
-  else if (op == OP_CONSTRAINT)
-    nid = print_constraint(nid, line);
-  else
-    nid = print_binary_op(nid, line);
+  else {
+    if (printing_propagated_constants)
+      if (has_symbolic_state(line) == 0)
+        return print_propagated_constant(nid, line);
+
+    if (op == OP_SEXT)
+      nid = print_ext(nid, line);
+    else if (op == OP_UEXT)
+      nid = print_ext(nid, line);
+    else if (op == OP_SLICE)
+      nid = print_slice(nid, line);
+    else if (is_unary_op(op))
+      nid = print_unary_op(nid, line);
+    else if (op == OP_ITE)
+      nid = print_ternary_op(nid, line);
+    else if (op == OP_WRITE)
+      nid = print_ternary_op(nid, line);
+    else if (op == OP_BAD)
+      nid = print_constraint(nid, line);
+    else if (op == OP_CONSTRAINT)
+      nid = print_constraint(nid, line);
+    else
+      nid = print_binary_op(nid, line);
+  }
+  //if (printing_unrolled_model)
+    // TODO: comments irritate bitwuzla here
+    //w = w + dprintf(output_fd, "\n");
+  //else
   print_comment(line);
   return nid;
 }
@@ -4102,7 +4239,6 @@ uint64_t eval_input(uint64_t* line) {
       input_steps = current_step;
 
     set_state(line, current_input);
-
     set_step(line, next_step);
 
     if (any_input == 0)
@@ -4116,6 +4252,15 @@ uint64_t eval_input(uint64_t* line) {
   printf("%s: unknown operator %s\n", selfie_name, op);
 
   exit(EXITCODE_SYSTEMERROR);
+}
+
+void propagate_symbolic_state(uint64_t* line, uint64_t* arg1, uint64_t* arg2, uint64_t* arg3) {
+  if (propagating_symbolic_state) {
+    if ((has_symbolic_state(arg1) + has_symbolic_state(arg2) + has_symbolic_state(arg3)) == 0)
+      set_symbolic_state(line, UNUSED);
+    else
+      set_symbolic_state(line, line);
+  }
 }
 
 uint64_t eval_ext(uint64_t* line) {
@@ -4137,6 +4282,8 @@ uint64_t eval_ext(uint64_t* line) {
       else
         // assert: unsigned extension
         set_state(line, eval_line(value_nid));
+
+      propagate_symbolic_state(line, value_nid, UNUSED, UNUSED);
 
       set_step(line, next_step);
 
@@ -4166,6 +4313,8 @@ uint64_t eval_slice(uint64_t* line) {
     if (u >= l)
       if (eval_bitvec_size(get_sid(line)) == u - l + 1) {
         set_state(line, get_bits(eval_line(value_nid), l, u - l + 1));
+
+        propagate_symbolic_state(line, value_nid, UNUSED, UNUSED);
 
         set_step(line, next_step);
 
@@ -4201,6 +4350,8 @@ uint64_t eval_concat(uint64_t* line) {
 
     set_state(line, left_shift(left_value, right_size) + right_value);
 
+    propagate_symbolic_state(line, left_nid, right_nid, UNUSED);
+
     set_step(line, next_step);
 
     return get_state(line);
@@ -4226,10 +4377,21 @@ uint64_t eval_ite(uint64_t* line) {
   match_sorts(get_sid(line), get_sid(then_nid), "ite then");
   match_sorts(get_sid(line), get_sid(else_nid), "ite else");
 
-  if (eval_line(if_nid))
+  if (eval_line(if_nid)) {
     set_state(line, eval_line(then_nid));
-  else
+
+    if (propagating_symbolic_state)
+      if (has_symbolic_state(if_nid))
+        eval_line(else_nid);
+  } else {
+    if (propagating_symbolic_state)
+      if (has_symbolic_state(if_nid))
+        eval_line(then_nid);
+
     set_state(line, eval_line(else_nid));
+  }
+
+  propagate_symbolic_state(line, if_nid, then_nid, else_nid);
 
   set_step(line, next_step);
 
@@ -4271,6 +4433,8 @@ uint64_t eval_read(uint64_t* line) {
 
           any_input = 1;
         }
+
+        propagate_symbolic_state(line, read_nid, index_nid, UNUSED);
 
         set_step(line, next_step);
 
@@ -4316,6 +4480,8 @@ uint64_t eval_write(uint64_t* line) {
 
           set_state(line, (uint64_t) state_nid);
 
+          set_symbolic_state(line, line);
+
           set_step(line, next_step);
 
           return get_state(line);
@@ -4357,6 +4523,8 @@ uint64_t eval_unary_op(uint64_t* line) {
     else if (op == OP_NEG)
       set_state(line, sign_shrink(-value, size));
 
+    propagate_symbolic_state(line, value_nid, UNUSED, UNUSED);
+
     set_step(line, next_step);
 
     return get_state(line);
@@ -4389,9 +4557,13 @@ uint64_t eval_binary_op(uint64_t* line) {
 
       left_value = eval_line(left_nid);
 
-      if (left_value == 0)
+      if (left_value == 0) {
         set_state(line, left_value == 0);
-      else {
+
+        if (propagating_symbolic_state)
+          if (has_symbolic_state(left_nid))
+            eval_line(right_nid);
+      } else {
         // lazy evaluation of right operand
         right_value = eval_line(right_nid);
 
@@ -4472,6 +4644,8 @@ uint64_t eval_binary_op(uint64_t* line) {
       }
     }
 
+    propagate_symbolic_state(line, left_nid, right_nid, UNUSED);
+
     set_step(line, next_step);
 
     return get_state(line);
@@ -4513,9 +4687,6 @@ uint64_t eval_line(uint64_t* line) {
   else
     value = eval_binary_op(line);
 
-  if (printing_btor_model)
-    print_line_advancing_nid(line);
-
   return value;
 }
 
@@ -4541,26 +4712,34 @@ uint64_t eval_property(uint64_t core, uint64_t* line) {
   condition = eval_line(condition_nid);
 
   if (op == OP_BAD) {
-    if (condition != 0) {
+    if (printing_unrolled_model)
+      print_line_advancing_nid(line);
+    else if (condition != 0) {
       printf("%s: bad %s satisfied on core-%lu @ 0x%lX after %lu steps", selfie_name,
         symbol, core, eval_line_for(core, state_pc_nids), next_step - current_offset);
       if (any_input) printf(" with input %lu\n", current_input); else printf("\n");
-    } else if (printing_btor_model)
-      print_line_advancing_nid(line);
+    }
 
     set_state(line, condition != 0);
+
+    propagate_symbolic_state(line, condition_nid, UNUSED, UNUSED);
+
     set_step(line, next_step);
 
     return condition != 0;
   } else if (op == OP_CONSTRAINT) {
-    if (condition == 0) {
+    if (printing_unrolled_model)
+      print_line_advancing_nid(line);
+    else if (condition == 0) {
       printf("%s: constraint %s violated on core-%lu @ 0x%lX after %lu steps\n", selfie_name,
         symbol, core, eval_line_for(core, state_pc_nids), next_step - current_offset);
       if (any_input) printf(" with input %lu\n", current_input); else printf("\n");
-    } else if (printing_btor_model)
-      print_line_advancing_nid(line);
+    }
 
     set_state(line, condition == 0);
+
+    propagate_symbolic_state(line, condition_nid, UNUSED, UNUSED);
+
     set_step(line, next_step);
 
     return condition == 0;
@@ -4575,7 +4754,7 @@ uint64_t eval_property_for(uint64_t core, uint64_t* lines) {
   return eval_property(core, get_for(core, lines));
 }
 
-uint64_t eval_init(uint64_t* line) {
+void eval_init(uint64_t* line) {
   uint64_t* state_nid;
   uint64_t* value_nid;
 
@@ -4594,11 +4773,7 @@ uint64_t eval_init(uint64_t* line) {
               if (is_bitvector(get_sid(state_nid))) {
                 match_sorts(get_sid(state_nid), get_sid(value_nid), "init bitvector");
 
-                set_symbolic_state(state_nid, value_nid);
-
                 set_state(state_nid, eval_line(value_nid));
-
-                set_step(state_nid, INITIALIZED);
               } else {
                 // assert: sid of state line is ARRAY
                 if (is_bitvector(get_sid(value_nid))) {
@@ -4610,11 +4785,7 @@ uint64_t eval_init(uint64_t* line) {
                     exit(EXITCODE_SYSTEMERROR);
                   }
 
-                  set_symbolic_state(state_nid, value_nid);
-
                   set_state(state_nid, (uint64_t) allocate_array(get_sid(state_nid)));
-
-                  set_step(state_nid, INITIALIZED);
                 } else {
                   // assert: sid of value line is ARRAY
                   match_sorts(get_sid(state_nid), get_sid(value_nid), "init array");
@@ -4622,11 +4793,7 @@ uint64_t eval_init(uint64_t* line) {
                   value_nid = (uint64_t*) eval_line(value_nid);
 
                   if (get_state(state_nid) != get_state(value_nid)) {
-                    set_symbolic_state(state_nid, value_nid);
-
                     set_state(state_nid, get_state(value_nid));
-
-                    set_step(state_nid, INITIALIZED);
 
                     // TODO: reinitialize value state
                     set_state(value_nid, 0);
@@ -4639,10 +4806,14 @@ uint64_t eval_init(uint64_t* line) {
                 }
               }
 
+              // use the init line as symbolic state
+              set_symbolic_state(state_nid, line);
+
+              set_step(state_nid, INITIALIZED);
+
               set_step(line, INITIALIZED);
 
-              // assert: return value is never used
-              return (uint64_t) state_nid;
+              return;
             } else
               printf("%s: init reinitializing state error\n", selfie_name);
           } else
@@ -4715,6 +4886,9 @@ uint64_t eval_next(uint64_t* line) {
 
               set_step(line, next_step);
 
+              if (printing_unrolled_model)
+                print_line_advancing_nid(get_arg2(line));
+
               return no_update;
             } else
               printf("%s: next non-current state error\n", selfie_name);
@@ -4744,12 +4918,14 @@ void apply_next(uint64_t* line) {
 
   if (get_step(line) == next_step) {
     state_nid = get_arg1(line);
+    value_nid = get_arg2(line);
 
-    if (is_bitvector(get_sid(state_nid))) {
-      value_nid = get_arg2(line);
-
+    if (is_bitvector(get_sid(state_nid)))
       set_state(state_nid, get_state(value_nid));
-    } // TODO: log writes and only apply with init and next
+    // TODO: else log writes and only apply with init and next
+
+    // use the next line as symbolic state
+    set_symbolic_state(state_nid, line);
 
     set_step(state_nid, next_step);
 
@@ -4984,10 +5160,12 @@ void new_program_break(uint64_t core) {
     state_program_break_nid = new_input(OP_STATE, SID_VIRTUAL_ADDRESS,
       format_comment("core-%lu-program-break", core), "program break");
 
-  init_program_break_nid  = new_init(SID_VIRTUAL_ADDRESS, state_program_break_nid,
+  init_program_break_nid = new_init(SID_VIRTUAL_ADDRESS, state_program_break_nid,
     NID_HEAP_START, "initial program break is start of heap segment");
 
   eval_init(init_program_break_nid);
+
+  set_for(core, init_program_break_nids, init_program_break_nid);
 
   next_program_break_nid = state_program_break_nid;
 }
@@ -5022,12 +5200,16 @@ void new_kernel_state(uint64_t core) {
 
   eval_init(init_readable_bytes_nid);
 
+  set_for(core, init_readable_bytes_nids, init_readable_bytes_nid);
+
   state_read_bytes_nid = new_input(OP_STATE, SID_MACHINE_WORD,
     format_comment("core-%lu-read-bytes", core), "bytes read in active read system call");
   init_read_bytes_nid  = new_init(SID_MACHINE_WORD, state_read_bytes_nid,
     NID_MACHINE_WORD_0, "initially zero read bytes");
 
   eval_init(init_read_bytes_nid);
+
+  set_for(core, init_read_bytes_nids, init_read_bytes_nid);
 }
 
 void print_kernel_state(uint64_t core) {
@@ -5045,11 +5227,11 @@ void print_kernel_state(uint64_t core) {
   print_nobreak_comment_for(core, "kernel state");
 
   if (SHARED_MEMORY == 0)
-    print_break_line(init_program_break_nid);
+    print_break_line_for(core, init_program_break_nids);
 
-  print_break_line(init_readable_bytes_nid);
+  print_break_line_for(core, init_readable_bytes_nids);
 
-  print_break_line(init_read_bytes_nid);
+  print_break_line_for(core, init_read_bytes_nids);
 }
 
 // *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~
@@ -5095,6 +5277,10 @@ uint64_t* get_shamt(uint64_t* value_nid) {
 }
 
 void new_register_file_state(uint64_t core) {
+  uint64_t* init_zeroed_register_file_nid;
+  uint64_t* next_zeroed_register_file_nid;
+  uint64_t* initial_register_file_nid;
+  uint64_t* init_register_file_nid;
   uint64_t  reg;
   uint64_t* reg_nid;
   uint64_t  value;
@@ -5112,12 +5298,12 @@ void new_register_file_state(uint64_t core) {
   state_register_file_nid = new_input(OP_STATE, SID_REGISTER_STATE,
     format_comment("core-%lu-zeroed-register-file", core), "zeroed register file");
 
-  set_for(core, state_register_file_nids, state_register_file_nid);
-
   init_zeroed_register_file_nid = new_init(SID_REGISTER_STATE,
     state_register_file_nid, NID_MACHINE_WORD_0, "zeroing register file");
 
   eval_init(init_zeroed_register_file_nid);
+
+  next_zeroed_register_file_nid = UNUSED;
 
   if (number_of_binaries == 0) {
     value_nid = cast_virtual_address_to_machine_word(
@@ -5171,14 +5357,18 @@ void new_register_file_state(uint64_t core) {
     state_register_file_nid = new_input(OP_STATE, SID_REGISTER_STATE,
       format_comment("core-%lu-initialized-register-file", core), "initialized register file");
 
-    set_for(core, state_register_file_nids, state_register_file_nid);
-
     init_register_file_nid = new_init(SID_REGISTER_STATE,
       state_register_file_nid, initial_register_file_nid, "initializing registers");
   } else
     init_register_file_nid = init_zeroed_register_file_nid;
 
   eval_init(init_register_file_nid);
+
+  set_for(core, init_zeroed_register_file_nids, init_zeroed_register_file_nid);
+  set_for(core, next_zeroed_register_file_nids, next_zeroed_register_file_nid);
+
+  set_for(core, state_register_file_nids, state_register_file_nid);
+  set_for(core, init_register_file_nids, init_register_file_nid);
 }
 
 void print_register_file_state(uint64_t core) {
@@ -5191,21 +5381,22 @@ void print_register_file_state(uint64_t core) {
 
   print_break_comment_for(core, "zeroed register file");
 
-  print_line(init_zeroed_register_file_nid);
+  print_line_for(core, init_zeroed_register_file_nids);
 
-  if (init_register_file_nid != init_zeroed_register_file_nid) {
-    print_line(next_zeroed_register_file_nid);
+  if (get_for(core, init_register_file_nids) != get_for(core, init_zeroed_register_file_nids)) {
+    print_line_for(core, next_zeroed_register_file_nids);
 
     if (number_of_binaries == 0)
       print_break_comment("initializing sp");
     else
       print_aligned_break_comment("initializing registers", log_ten(NUMBEROFREGISTERS * 3 + 1) + 1);
 
-    print_line(initial_register_file_nid);
+    // print initial values before state
+    print_line(get_arg2(get_for(core, init_register_file_nids)));
 
     print_break_comment_for(core, "initialized register file");
 
-    print_line(init_register_file_nid);
+    print_line_for(core, init_register_file_nids);
   }
 }
 
@@ -5244,7 +5435,7 @@ void print_memory_sorts() {
   print_line(SID_STACK_STATE);
 }
 
-void new_segmentation() {
+void new_segmentation(uint64_t core) {
   uint64_t stack_end;
   uint64_t low_stack_address_space;
   uint64_t up_stack_address_space;
@@ -5344,22 +5535,31 @@ void new_segmentation() {
 
     exit(EXITCODE_SYSTEMERROR);
   }
+
+  set_for(core, NID_CODE_STARTS, NID_CODE_START);
+  set_for(core, NID_CODE_ENDS, NID_CODE_END);
+  set_for(core, NID_DATA_STARTS, NID_DATA_START);
+  set_for(core, NID_DATA_ENDS, NID_DATA_END);
+  set_for(core, NID_HEAP_STARTS, NID_HEAP_START);
+  set_for(core, NID_HEAP_ENDS, NID_HEAP_END);
+  set_for(core, NID_STACK_STARTS, NID_STACK_START);
+  set_for(core, NID_STACK_ENDS, NID_STACK_END);
 }
 
 void print_segmentation(uint64_t core) {
   print_break_comment_for(core, "segmentation");
 
-  print_line(NID_CODE_START);
-  print_line(NID_CODE_END);
+  print_line_for(core, NID_CODE_STARTS);
+  print_line_for(core, NID_CODE_ENDS);
 
-  print_line(NID_DATA_START);
-  print_line(NID_DATA_END);
+  print_line_for(core, NID_DATA_STARTS);
+  print_line_for(core, NID_DATA_ENDS);
 
-  print_line(NID_HEAP_START);
-  print_line(NID_HEAP_END);
+  print_line_for(core, NID_HEAP_STARTS);
+  print_line_for(core, NID_HEAP_ENDS);
 
-  print_line(NID_STACK_START);
-  print_line(NID_STACK_END);
+  print_line_for(core, NID_STACK_STARTS);
+  print_line_for(core, NID_STACK_ENDS);
 }
 
 uint64_t* select_segment_feature(uint64_t* segment_nid,
@@ -5431,6 +5631,13 @@ uint64_t* store_if_in_segment(uint64_t* vaddr_nid, uint64_t* store_nid, uint64_t
 }
 
 void new_code_segment(uint64_t core) {
+  uint64_t* state_zeroed_code_segment_nid;
+  uint64_t* init_zeroed_code_segment_nid;
+  uint64_t* next_zeroed_code_segment_nid;
+  uint64_t* initial_code_nid;
+  uint64_t* init_code_segment_nid;
+  uint64_t* next_code_segment_nid;
+  uint64_t* initial_code_segment_nid;
   uint64_t  number_of_hex_digits;
   uint64_t  saved_reuse_lines;
   uint64_t* laddr_nid;
@@ -5438,8 +5645,14 @@ void new_code_segment(uint64_t core) {
   uint64_t* store_nid;
 
   if (core >= number_of_binaries) {
+    state_zeroed_code_segment_nid = UNUSED;
+    init_zeroed_code_segment_nid  = UNUSED;
+    next_zeroed_code_segment_nid  = UNUSED;
+
     state_code_segment_nid = new_input(OP_STATE, SID_CODE_STATE,
       format_comment("core-%lu-code-segment", core), "uninitialized code segment");
+
+    initial_code_nid = UNUSED;
 
     init_code_segment_nid = UNUSED;
 
@@ -5516,25 +5729,36 @@ void new_code_segment(uint64_t core) {
         state_code_segment_nid, state_code_segment_nid, "read-only code segment");
     } else {
       state_code_segment_nid = state_zeroed_code_segment_nid;
-      init_code_segment_nid  = init_zeroed_code_segment_nid;
-      next_code_segment_nid  = next_zeroed_code_segment_nid;
+
+      init_code_segment_nid = init_zeroed_code_segment_nid;
+      next_code_segment_nid = next_zeroed_code_segment_nid;
     }
   }
 
+  set_for(core, init_zeroed_code_segment_nids, init_zeroed_code_segment_nid);
+  set_for(core, next_zeroed_code_segment_nids, next_zeroed_code_segment_nid);
+
+  set_for(core, initial_code_nids, initial_code_nid);
+
   set_for(core, state_code_segment_nids, state_code_segment_nid);
+  set_for(core, init_code_segment_nids, init_code_segment_nid);
   set_for(core, next_code_segment_nids, next_code_segment_nid);
 }
 
 void print_code_segment(uint64_t core) {
+  uint64_t* initial_code_nid;
+
   if (core >= number_of_binaries) {
     print_break_comment_for(core, "uninitialized code segment");
 
-    print_line(next_code_segment_nid);
+    print_line_for(core, next_code_segment_nids);
   } else {
     print_break_comment("zeroed code segment");
 
-    print_line(init_zeroed_code_segment_nid);
-    print_line(next_zeroed_code_segment_nid);
+    print_line_for(core, init_zeroed_code_segment_nids);
+    print_line_for(core, next_zeroed_code_segment_nids);
+
+    initial_code_nid = get_for(core, initial_code_nids);
 
     if (initial_code_nid != UNUSED) {
       // conservatively estimating number of lines needed to store one byte
@@ -5548,13 +5772,18 @@ void print_code_segment(uint64_t core) {
 
       print_break_comment_for(core, "loaded code segment");
 
-      print_line(init_code_segment_nid);
-      print_line(next_code_segment_nid);
+      print_line_for(core, init_code_segment_nids);
+      print_line_for(core, next_code_segment_nids);
     }
   }
 }
 
 void new_data_segment(uint64_t core) {
+  uint64_t* init_zeroed_data_segment_nid;
+  uint64_t* next_zeroed_data_segment_nid;
+  uint64_t* initial_data_nid;
+  uint64_t* initial_data_segment_nid;
+  uint64_t* init_data_segment_nid;
   uint64_t  number_of_hex_digits;
   uint64_t  saved_reuse_lines;
   uint64_t  vaddr;
@@ -5582,12 +5811,16 @@ void new_data_segment(uint64_t core) {
 
   eval_init(init_zeroed_data_segment_nid);
 
-  if (number_of_binaries > 0) {
-    number_of_hex_digits = round_up(VIRTUAL_ADDRESS_SPACE, 4) / 4;
+  set_for(core, init_zeroed_data_segment_nids, init_zeroed_data_segment_nid);
 
+  next_zeroed_data_segment_nid = UNUSED;
+
+  if (number_of_binaries > 0) {
     initial_data_nid = UNUSED;
 
     initial_data_segment_nid = state_data_segment_nid;
+
+    number_of_hex_digits = round_up(VIRTUAL_ADDRESS_SPACE, 4) / 4;
 
     saved_reuse_lines = reuse_lines;
 
@@ -5648,10 +5881,18 @@ void new_data_segment(uint64_t core) {
       eval_init(init_data_segment_nid);
     } else
       init_data_segment_nid = init_zeroed_data_segment_nid;
+
+    set_for(core, next_zeroed_data_segment_nids, next_zeroed_data_segment_nid);
+
+    set_for(core, initial_data_nids, initial_data_nid);
+
+    set_for(core, init_data_segment_nids, init_data_segment_nid);
   }
 }
 
 void print_data_segment(uint64_t core) {
+  uint64_t* initial_data_nid;
+
   if (SYNCHRONIZED_MEMORY) {
     if (core > 0)
       return;
@@ -5661,11 +5902,13 @@ void print_data_segment(uint64_t core) {
 
   print_break_comment_for(core, "zeroed data segment");
 
-  print_line(init_zeroed_data_segment_nid);
+  print_line_for(core, init_zeroed_data_segment_nids);
 
-  if (number_of_binaries > 0)
+  if (number_of_binaries > 0) {
+    initial_data_nid = get_for(core, initial_data_nids);
+
     if (initial_data_nid != UNUSED) {
-      print_line(next_zeroed_data_segment_nid);
+      print_line_for(core, next_zeroed_data_segment_nids);
 
       // conservatively estimating number of lines needed to store one byte
       print_aligned_break_comment("loading data", log_ten(data_size * 3) + 1);
@@ -5678,11 +5921,17 @@ void print_data_segment(uint64_t core) {
 
       print_break_comment_for(core, "loaded data segment");
 
-      print_line(init_data_segment_nid);
+      print_line_for(core, init_data_segment_nids);
     }
+  }
 }
 
 void new_heap_segment(uint64_t core) {
+  uint64_t* init_zeroed_heap_segment_nid;
+  uint64_t* next_zeroed_heap_segment_nid;
+  uint64_t* initial_heap_nid;
+  uint64_t* initial_heap_segment_nid;
+  uint64_t* init_heap_segment_nid;
   uint64_t  number_of_hex_digits;
   uint64_t  saved_reuse_lines;
   uint64_t  vaddr;
@@ -5710,12 +5959,16 @@ void new_heap_segment(uint64_t core) {
 
   eval_init(init_zeroed_heap_segment_nid);
 
-  if (number_of_binaries > 0) {
-    number_of_hex_digits = round_up(VIRTUAL_ADDRESS_SPACE, 4) / 4;
+  set_for(core, init_zeroed_heap_segment_nids, init_zeroed_heap_segment_nid);
 
+  next_zeroed_heap_segment_nid = UNUSED;
+
+  if (number_of_binaries > 0) {
     initial_heap_nid = UNUSED;
 
     initial_heap_segment_nid = state_heap_segment_nid;
+
+    number_of_hex_digits = round_up(VIRTUAL_ADDRESS_SPACE, 4) / 4;
 
     saved_reuse_lines = reuse_lines;
 
@@ -5776,10 +6029,18 @@ void new_heap_segment(uint64_t core) {
       eval_init(init_heap_segment_nid);
     } else
       init_heap_segment_nid = init_zeroed_heap_segment_nid;
+
+    set_for(core, next_zeroed_heap_segment_nids, next_zeroed_heap_segment_nid);
+
+    set_for(core, initial_heap_nids, initial_heap_nid);
+
+    set_for(core, init_heap_segment_nids, init_heap_segment_nid);
   }
 }
 
 void print_heap_segment(uint64_t core) {
+  uint64_t* initial_heap_nid;
+
   if (SYNCHRONIZED_MEMORY) {
     if (core > 0)
       return;
@@ -5789,11 +6050,13 @@ void print_heap_segment(uint64_t core) {
 
   print_break_comment_for(core, "zeroed heap segment");
 
-  print_line(init_zeroed_heap_segment_nid);
+  print_line_for(core, init_zeroed_heap_segment_nids);
 
-  if (number_of_binaries > 0)
+  if (number_of_binaries > 0) {
+    initial_heap_nid = get_for(core, initial_heap_nids);
+
     if (initial_heap_nid != UNUSED) {
-      print_line(next_zeroed_heap_segment_nid);
+      print_line_for(core, next_zeroed_heap_segment_nids);
 
       // conservatively estimating number of lines needed to store one byte
       print_aligned_break_comment("loading heap", log_ten(heap_initial_size * 3) + 1);
@@ -5806,11 +6069,17 @@ void print_heap_segment(uint64_t core) {
 
       print_break_comment_for(core, "loaded heap segment");
 
-      print_line(init_heap_segment_nid);
+      print_line_for(core, init_heap_segment_nids);
     }
+  }
 }
 
 void new_stack_segment(uint64_t core) {
+  uint64_t* init_zeroed_stack_segment_nid;
+  uint64_t* next_zeroed_stack_segment_nid;
+  uint64_t* initial_stack_nid;
+  uint64_t* initial_stack_segment_nid;
+  uint64_t* init_stack_segment_nid;
   uint64_t  number_of_hex_digits;
   uint64_t  saved_reuse_lines;
   uint64_t  vaddr;
@@ -5838,12 +6107,16 @@ void new_stack_segment(uint64_t core) {
 
   eval_init(init_zeroed_stack_segment_nid);
 
-  if (number_of_binaries > 0) {
-    number_of_hex_digits = round_up(VIRTUAL_ADDRESS_SPACE, 4) / 4;
+  set_for(core, init_zeroed_stack_segment_nids, init_zeroed_stack_segment_nid);
 
+  next_zeroed_stack_segment_nid = UNUSED;
+
+  if (number_of_binaries > 0) {
     initial_stack_nid = UNUSED;
 
     initial_stack_segment_nid = state_stack_segment_nid;
+
+    number_of_hex_digits = round_up(VIRTUAL_ADDRESS_SPACE, 4) / 4;
 
     saved_reuse_lines = reuse_lines;
 
@@ -5904,10 +6177,18 @@ void new_stack_segment(uint64_t core) {
       eval_init(init_stack_segment_nid);
     } else
       init_stack_segment_nid = init_zeroed_stack_segment_nid;
+
+    set_for(core, next_zeroed_stack_segment_nids, next_zeroed_stack_segment_nid);
+
+    set_for(core, initial_stack_nids, initial_stack_nid);
+
+    set_for(core, init_stack_segment_nids, init_stack_segment_nid);
   }
 }
 
 void print_stack_segment(uint64_t core) {
+  uint64_t* initial_stack_nid;
+
   if (SYNCHRONIZED_MEMORY) {
     if (core > 0)
       return;
@@ -5917,11 +6198,13 @@ void print_stack_segment(uint64_t core) {
 
   print_break_comment_for(core, "zeroed stack segment");
 
-  print_line(init_zeroed_stack_segment_nid);
+  print_line_for(core, init_zeroed_stack_segment_nids);
 
-  if (number_of_binaries > 0)
+  if (number_of_binaries > 0) {
+    initial_stack_nid = get_for(core, initial_stack_nids);
+
     if (initial_stack_nid != UNUSED) {
-      print_line(next_zeroed_stack_segment_nid);
+      print_line_for(core, next_zeroed_stack_segment_nids);
 
       // conservatively estimating number of lines needed to store one byte
       print_aligned_break_comment("loading stack", log_ten(stack_initial_size * 3) + 1);
@@ -5934,8 +6217,9 @@ void print_stack_segment(uint64_t core) {
 
       print_break_comment_for(core, "loaded stack segment");
 
-      print_line(init_stack_segment_nid);
+      print_line_for(core, init_stack_segment_nids);
     }
+  }
 }
 
 uint64_t* get_memory_address_sort(uint64_t* segment_nid) {
@@ -9642,6 +9926,8 @@ void new_core_state(uint64_t core) {
   init_pc_nid = new_init(SID_MACHINE_WORD, state_pc_nid, initial_pc_nid, "initial value of pc");
 
   eval_init(init_pc_nid);
+
+  set_for(core, init_pc_nids, init_pc_nid);
 }
 
 void print_core_state(uint64_t core) {
@@ -9651,8 +9937,10 @@ void print_core_state(uint64_t core) {
 
   print_break_comment_for(core, "program counter");
 
-  print_line(initial_pc_nid);
-  print_line(init_pc_nid);
+  // print initial value before state
+  print_line(get_arg2(init_pc_nid));
+
+  print_line_for(core, init_pc_nids);
 }
 
 // *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~ *~*~
@@ -10753,6 +11041,8 @@ void model_rotor() {
 
   init_kernels(number_of_cores);
   init_register_files(number_of_cores);
+
+  init_segmentation(number_of_cores);
   init_memories(number_of_cores);
 
   init_instruction_mnemonics();
@@ -10769,7 +11059,7 @@ void model_rotor() {
   while (core < number_of_cores) {
     load_binary(core);
 
-    new_segmentation();
+    new_segmentation(core);
 
     new_kernel_state(core);
     new_core_state(core);
@@ -10919,7 +11209,9 @@ void close_model_file() {
   printf("%s: %lu characters of model formulae written into %s\n", selfie_name, w, model_name);
 }
 
-void print_btor2_model_for(uint64_t core) {
+void print_model_for(uint64_t core) {
+  printing_propagated_constants = 1;
+
   print_segmentation(core);
 
   print_kernel_state(core);
@@ -10930,6 +11222,8 @@ void print_btor2_model_for(uint64_t core) {
   print_data_segment(core);
   print_heap_segment(core);
   print_stack_segment(core);
+
+  printing_propagated_constants = 0;
 
   print_break_comment_line_for(core, "fetch instruction", eval_ir_nids);
   print_break_comment_line_for(core, "fetch compressed instruction", eval_c_ir_nids);
@@ -11034,7 +11328,7 @@ void print_btor2_model_for(uint64_t core) {
   print_break_line_for(core, sync_stack_segment_nids);
 }
 
-void print_btor2_model() {
+void print_model() {
   uint64_t core;
 
   open_model_file();
@@ -11048,7 +11342,7 @@ void print_btor2_model() {
   core = 0;
 
   while (core < number_of_cores) {
-    print_btor2_model_for(core);
+    print_model_for(core);
 
     core = core + 1;
   }
@@ -11661,7 +11955,9 @@ void disassemble_rotor(uint64_t core) {
   }
 }
 
-void print_btor_model() {
+void print_unrolled_model() {
+  uint64_t last_step_nid;
+
   // TODO: finish
   open_model_file();
 
@@ -11678,9 +11974,27 @@ void print_btor_model() {
   first_input = 0;
   any_input   = 0;
 
-  printing_btor_model = 1;
+  printing_unrolled_model = 1;
+
+  last_nid = 0;
 
   eval_multicore_properties();
+
+  while (current_step < 2) {
+    last_step_nid = current_nid - 1;
+
+    eval_multicore_sequential();
+
+    apply_multicore_sequential();
+
+    current_step = next_step;
+
+    next_step = next_step + 1;
+
+    last_nid = last_step_nid;
+
+    eval_multicore_properties();
+  }
 
   close_model_file();
 }
@@ -11884,10 +12198,10 @@ uint64_t selfie_model() {
 
       model_rotor();
 
-      if (generate_btor_model)
-        print_btor_model();
+      if (generate_unrolled_model)
+        print_unrolled_model();
       else {
-        print_btor2_model();
+        print_model();
 
         if (evaluate_model)
           eval_rotor();
