@@ -1015,7 +1015,7 @@ uint64_t* fetch_compressed_instruction(uint64_t* pc_nid, uint64_t* code_segment_
 // ------------------------ GLOBAL CONSTANTS -----------------------
 
 uint64_t SYNCHRONIZED_MEMORY = 0; // flag for synchronized main memory across cores
-uint64_t SHARED_MEMORY       = 0; // flag for shared main memory across cores
+uint64_t SHARED_MEMORY       = 1; // flag for shared main memory across cores
 
 // virtual address space
 
@@ -6093,9 +6093,10 @@ void new_stack_segment(uint64_t core) {
   if (SYNCHRONIZED_MEMORY) {
     if (core > 0)
       return;
-  } else if (SHARED_MEMORY)
+  }/* else if (SHARED_MEMORY)
     if (core > 0)
       return;
+  */
 
   state_stack_segment_nid = new_input(OP_STATE, SID_STACK_STATE,
     format_comment("core-%lu-zeroed-stack-segment", core), "zeroed stack segment");
@@ -6192,9 +6193,9 @@ void print_stack_segment(uint64_t core) {
   if (SYNCHRONIZED_MEMORY) {
     if (core > 0)
       return;
-  } else if (SHARED_MEMORY)
+  }/* else if (SHARED_MEMORY)
     if (core > 0)
-      return;
+      return; */
 
   print_break_comment_for(core, "zeroed stack segment");
 
@@ -10843,13 +10844,15 @@ void rotor_sequential(uint64_t core, uint64_t* pc_nid, uint64_t* register_file_n
           "new stack segment data flow == new core-0 stack segment data flow?"),
         format_comment("new-core-%lu-stack-segment-data-flow", core),
         "asserting new stack segment data flow == new core-0 stack segment data flow");
+  /*
   else if (SHARED_MEMORY) {
     if (core < number_of_cores - 1)
       state_stack_segment_nid = stack_segment_data_flow_nid;
     else
       next_nid = new_next(SID_STACK_STATE,
         get_for(0, state_stack_segment_nids), stack_segment_data_flow_nid, "stack segment");
-  } else
+  } */
+  else
     next_nid = new_next(SID_STACK_STATE,
       stack_segment_nid, stack_segment_data_flow_nid, "stack segment");
 
