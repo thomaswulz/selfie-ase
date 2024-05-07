@@ -9915,16 +9915,18 @@ void new_core_state(uint64_t core) {
           new_input(OP_STATE, SID_MACHINE_WORD, format_comment("core-%lu-pc", core), "program counter");
 
   set_for(core, state_pc_nids, state_pc_nid);
-}
-
-void core_state_assign(uint64_t core) {
-  state_pc_nid = get_for(core, state_pc_nids);
 
   init_pc_nid = new_init(SID_MACHINE_WORD, state_pc_nid, initial_pc_nid, "initial value of pc");
 
   eval_init(init_pc_nid);
 
   set_for(core, init_pc_nids, init_pc_nid);
+}
+
+void core_state_assign(uint64_t core) {
+  state_pc_nid = get_for(core, state_pc_nids);
+
+  init_pc_nid = get_for(core, init_pc_nids);
 }
 
 void print_core_state(uint64_t core) {
