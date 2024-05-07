@@ -10251,7 +10251,6 @@ void kernel_properties(uint64_t core, uint64_t* ir_nid, uint64_t* read_bytes_nid
 }
 
 uint64_t *is_critical_section(uint64_t core, uint64_t *pc_nid) {
-  uint64_t *base_pc_nid;
   uint64_t *relative_pc_nid;
   uint64_t low_pc;
   uint64_t high_pc;
@@ -10264,8 +10263,7 @@ uint64_t *is_critical_section(uint64_t core, uint64_t *pc_nid) {
   low_pc_nid = new_constant(OP_CONSTH, SID_MACHINE_WORD, low_pc, 0, "low stutter range pc");
   high_pc_nid = new_constant(OP_CONSTH, SID_MACHINE_WORD, high_pc, 0, "high stutter range pc");
 
-  base_pc_nid = new_constant(OP_CONSTH, SID_MACHINE_WORD, code_start, 0, "start of code segment");
-  relative_pc_nid = new_binary(OP_SUB, SID_MACHINE_WORD, pc_nid, base_pc_nid, "pc relative to code start");
+  relative_pc_nid = new_binary(OP_SUB, SID_MACHINE_WORD, pc_nid, initial_pc_nid, "pc relative to code start");
   return new_binary_boolean(OP_AND,
                             new_binary_boolean(OP_ULT, relative_pc_nid, high_pc_nid, "pc < high?"),
                             new_binary_boolean(OP_UGTE, relative_pc_nid, low_pc_nid, "pc >= low?"),
