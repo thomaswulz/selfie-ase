@@ -11225,7 +11225,6 @@ void print_model_for(uint64_t core) {
   print_segmentation(core);
 
   print_kernel_state(core);
-  print_core_state(core);
   print_register_file_state(core);
 
   print_code_segment(core);
@@ -11348,6 +11347,13 @@ void print_model() {
 
   print_register_sorts();
   print_memory_sorts();
+
+  core = 0;
+
+  while (core < number_of_cores) {
+    print_core_state(core);
+    core = core + 1;
+  }
 
   core = 0;
 
