@@ -10538,24 +10538,82 @@ void kernel_properties(uint64_t core, uint64_t* ir_nid, uint64_t* read_bytes_nid
   }
 }
 
-uint64_t *is_critical_section(uint64_t core, uint64_t *pc_nid) {
-  uint64_t *relative_pc_nid;
+uint64_t *is_in_range(uint64_t *pc, uint64_t *low, uint64_t *high, char *comment) {
+  return new_binary_boolean(OP_AND,
+                            new_binary_boolean(OP_ULT, pc, high, "pc < high?"),
+                            new_binary_boolean(OP_UGTE, pc, low, "pc >= low?"),
+                            comment);
+}
+
+uint64_t *should_stutter(uint64_t core) {
   uint64_t low_pc;
   uint64_t high_pc;
+  uint64_t *this_pc_nid;
+  uint64_t *other_pc_nid;
   uint64_t *low_pc_nid;
   uint64_t *high_pc_nid;
+  uint64_t *stutter_check;
+  uint64_t *this_pc_in_range;
+  uint64_t *other_pc_in_range;
+  uint64_t other_core;
 
+  // low (inclusive) and high (exclusive) pc of critical section, relative to entry point
   low_pc = INSTRUCTIONSIZE * 0;
   high_pc = INSTRUCTIONSIZE * 1;
 
-  low_pc_nid = new_constant(OP_CONSTH, SID_MACHINE_WORD, low_pc, 0, "low stutter range pc");
-  high_pc_nid = new_constant(OP_CONSTH, SID_MACHINE_WORD, high_pc, 0, "high stutter range pc");
+  if (core == 0) {
+    other_core = 1;
+    // stutter when stutter bit is true
+    stutter_check = NID_TRUE;
+  }
+  else if (core == 1) {
+    other_core = 0;
+    // stutter when stutter bit is false
+    stutter_check = NID_FALSE;
+  }
+  else {
+    printf("%s: error: stutter only supported for two cores\n", selfie_name);
+    exit(1);
+  }
 
-  relative_pc_nid = new_binary(OP_SUB, SID_MACHINE_WORD, pc_nid, initial_pc_nid, "pc relative to code start");
-  return new_binary_boolean(OP_AND,
-                            new_binary_boolean(OP_ULT, relative_pc_nid, high_pc_nid, "pc < high?"),
-                            new_binary_boolean(OP_UGTE, relative_pc_nid, low_pc_nid, "pc >= low?"),
-                            "pc in stutter range?");
+  /*
+   * stutter iff any one of these is true:
+   * this pc is within critical section, and the other pc is before the critical section (other pc needs to catch up for synchronization to start crit sect)
+   * this pc is after critical section, other pc is within critical section (other pc needs to catch up for synchronization for rest of execution after crit sect)
+   * both pcs are in critical section and stutter bit is not equal to core number
+   */
+
+  low_pc_nid = new_constant(OP_CONSTH, SID_MACHINE_WORD, low_pc, 0, "low critical section pc");
+  high_pc_nid = new_constant(OP_CONSTH, SID_MACHINE_WORD, high_pc, 0, "high critical section pc");
+
+  this_pc_nid  = new_binary(OP_SUB, SID_MACHINE_WORD, get_for(core, state_pc_nids), initial_pc_nid, "this relative pc");
+  other_pc_nid = new_binary(OP_SUB, SID_MACHINE_WORD, get_for(other_core, state_pc_nids), initial_pc_nid, "other relative pc");
+
+  this_pc_in_range = is_in_range(this_pc_nid, low_pc_nid, high_pc_nid, "this pc in critical section?");
+  other_pc_in_range = is_in_range(other_pc_nid, low_pc_nid, high_pc_nid, "other pc in critical section?");
+
+  return new_binary_boolean(OP_OR,
+            new_binary_boolean(OP_OR,
+              new_binary_boolean(OP_AND,
+                                 this_pc_in_range,
+                                 new_binary_boolean(OP_ULT, other_pc_nid, low_pc_nid, "other pc before critical section?"),
+                                 "stutter until other pc enters critical section?"),
+              new_binary_boolean(OP_AND,
+                                 new_binary_boolean(OP_UGTE, this_pc_nid, high_pc_nid, "this pc after critical section?"),
+                                 other_pc_in_range,
+                                 "stutter until other pc leaves critical section?"),
+              "stutter based on pc only?"),
+            new_binary_boolean(OP_AND,
+                               new_binary_boolean(OP_AND,
+                                                  this_pc_in_range,
+                                                  other_pc_in_range,
+                                                  "both pcs in critical section?"),
+                               new_binary_boolean(OP_EQ,
+                                                  input_stutter,
+                                                  stutter_check,
+                                                  "stutter bit indicates this core?"),
+                              "stutter based on stutter bit?"),
+            "do stutter?");
 }
 
 void rotor_combinational(uint64_t core, uint64_t* pc_nid,
@@ -10572,8 +10630,7 @@ void rotor_combinational(uint64_t core, uint64_t* pc_nid,
     input_stutter = new_input(OP_INPUT, SID_BOOLEAN, "stutter-bit", "whether to stutter on this cycle");
   }
 
-  // TODO: actual stutter condition depends on thread # and pc of both threads
-  do_stutter = new_binary_boolean(OP_AND, is_critical_section(core, pc_nid), input_stutter, "stutter bit valid?");
+  do_stutter = should_stutter(core);
 
   // fetch instruction
 
