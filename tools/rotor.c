@@ -8604,10 +8604,12 @@ uint64_t* jalr_control_flow(uint64_t* pc_nid, uint64_t* ir_nid, uint64_t* regist
 
 uint64_t* core_control_flow(uint64_t* pc_nid, uint64_t* ir_nid, uint64_t* register_file_nid) {
   return
-    branch_control_flow(pc_nid, ir_nid, register_file_nid,
-      jal_control_flow(pc_nid, ir_nid,
-        jalr_control_flow(pc_nid, ir_nid, register_file_nid,
-          get_pc_value_plus_4(pc_nid))));
+    new_ternary(OP_ITE, SID_MACHINE_WORD, do_stutter, pc_nid,
+      branch_control_flow(pc_nid, ir_nid, register_file_nid,
+        jal_control_flow(pc_nid, ir_nid,
+          jalr_control_flow(pc_nid, ir_nid, register_file_nid,
+            get_pc_value_plus_4(pc_nid)))),
+      "stutter or normal pc update?");
 }
 
 // compressed instructions
@@ -10558,8 +10560,8 @@ uint64_t *should_stutter(uint64_t core) {
   uint64_t other_core;
 
   // low (inclusive) and high (exclusive) pc of critical section, relative to entry point
-  low_pc = INSTRUCTIONSIZE * 0;
-  high_pc = INSTRUCTIONSIZE * 1;
+  low_pc = INSTRUCTIONSIZE * 1;
+  high_pc = INSTRUCTIONSIZE * 4;
 
   if (core == 0) {
     other_core = 1;
@@ -10775,13 +10777,7 @@ void rotor_sequential(uint64_t core, uint64_t* pc_nid, uint64_t* register_file_n
         format_comment("new-core-%lu-pc-value", core),
         "asserting new pc value == new core-0 pc value");
   else
-    next_nid = new_next(SID_MACHINE_WORD, pc_nid,
-      new_ternary(OP_ITE, SID_MACHINE_WORD,
-      do_stutter,
-      pc_nid,
-      control_flow_nid,
-      "stutter or update pc"),
-    "program counter");
+    next_nid = new_next(SID_MACHINE_WORD, pc_nid, control_flow_nid, "program counter");
 
   set_for(core, next_pc_nids, next_nid);
   set_for(core, sync_pc_nids, sync_nid);
