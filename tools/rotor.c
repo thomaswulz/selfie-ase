@@ -10560,8 +10560,8 @@ uint64_t *should_stutter(uint64_t core) {
   uint64_t other_core;
 
   // low (inclusive) and high (exclusive) pc of critical section, relative to entry point
-  low_pc = INSTRUCTIONSIZE * 1;
-  high_pc = INSTRUCTIONSIZE * 4;
+  low_pc = INSTRUCTIONSIZE * 2;
+  high_pc = INSTRUCTIONSIZE * 5;
 
   if (core == 0) {
     other_core = 1;
