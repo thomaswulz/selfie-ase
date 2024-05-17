@@ -3074,6 +3074,11 @@ uint64_t* eval_stack_segment_data_flow_nids = (uint64_t*) 0;
 
 uint64_t* state_stutter_nid = (uint64_t*) 0;
 uint64_t* next_stutter_nid = (uint64_t*) 0;
+uint64_t* stutter_shift_initial = (uint64_t*) 0;
+uint64_t* state_stutter_shift_nid = (uint64_t*) 0;
+uint64_t* init_stutter_shift_nid = (uint64_t*) 0;
+uint64_t* next_stutter_shift_nid = (uint64_t*) 0;
+uint64_t* cur_stutter_bit = (uint64_t*) 0;
 uint64_t* do_stutter = (uint64_t*) 0;
 
 // ------------------------- INITIALIZATION ------------------------
@@ -10604,16 +10609,27 @@ uint64_t *should_stutter(uint64_t core) {
     num_stutter_bits = (high_pc - low_pc) * 2 / INSTRUCTIONSIZE - 1;
     stutter_sort = new_bitvec(num_stutter_bits, "stutter bit vector sort");
     state_stutter_nid = new_input(OP_STATE, stutter_sort, "stutter-bits", "stutter bit vector");
+    next_stutter_nid = new_next(stutter_sort, state_stutter_nid, state_stutter_nid, "keep stutter bits");
 
-    // if this cycle uses stutter bit: shift out lsb of stutter state for next cycle
-    next_stutter_nid = new_next(stutter_sort, state_stutter_nid,
-                                new_ternary(OP_ITE, stutter_sort,
-                                            both_pcs_in_range,
-                                            new_binary(OP_SRL, stutter_sort, state_stutter_nid,
-                                                       new_constant(OP_CONSTD, stutter_sort, 1, 0, "constant one"),
-                                                       "shift out current bit"),
-                                            state_stutter_nid, "keep or shift?"),
-                                "update stutter state");
+    stutter_shift_initial = new_constant(OP_CONSTD, stutter_sort, 0, 0, "initial stutter idx");
+    state_stutter_shift_nid = new_input(OP_STATE, stutter_sort, "stutter-bits-idx", "stutter bit vector index");
+    init_stutter_shift_nid = new_init(stutter_sort, state_stutter_shift_nid, stutter_shift_initial, "initialize index to zero");
+    next_stutter_shift_nid = new_next(stutter_sort,
+                                      state_stutter_shift_nid,
+                                      new_ternary(OP_ITE,
+                                                  stutter_sort,
+                                                  both_pcs_in_range,
+                                                  new_binary(OP_ADD,
+                                                            stutter_sort,
+                                                            state_stutter_shift_nid,
+                                                            new_constant(OP_CONSTD, stutter_sort, 1, 0, "constant one"),
+                                                            "increment idx by one"),
+                                                  state_stutter_shift_nid,
+                                                  "increment or keep?"),
+                                      "increment if bit used");
+
+    cur_stutter_bit = new_slice(SID_BOOLEAN, new_binary(OP_SRL, stutter_sort, state_stutter_nid, state_stutter_shift_nid, "shift right by index"), 0, 0,
+              "get lsb after shift");
   }
 
   return new_binary_boolean(OP_OR,
@@ -10632,8 +10648,7 @@ uint64_t *should_stutter(uint64_t core) {
                             new_binary_boolean(OP_AND,
                                                both_pcs_in_range,
                                                new_binary_boolean(OP_EQ,
-                                                                  new_slice(SID_BOOLEAN, state_stutter_nid, 0, 0,
-                                                                            "stutter lsb"),
+                                                                  cur_stutter_bit,
                                                                   stutter_check,
                                                                   "stutter bit indicates this core?"),
                                                "stutter based on stutter bit?"),
@@ -11427,6 +11442,10 @@ void print_model() {
 
   print_break_comment("stutter bits");
   print_line(next_stutter_nid);
+  print_line(stutter_shift_initial);
+  print_line(init_stutter_shift_nid);
+  print_line(next_stutter_shift_nid);
+  print_line(cur_stutter_bit);
 
   core = 0;
 
